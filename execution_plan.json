@@ -1,0 +1,23 @@
+{
+  "named_data": {},
+  "cmds": {
+    "hello": {
+      "wasm_bin": "hello.wasm",
+      "wasm_bin_is_named": false,
+      "stdin": ["", ""],
+      "stdin_is_named": false,
+      "job_data": {},
+      "directories": [],
+      "args": [],
+      "env": {},
+      "zip_results": {"/": "/"},
+      "named_results": {},
+      "capabilities": {},
+      "result_addr": {"host": "this", "port": 8004},
+      "delete": true
+    }
+  },
+  "exec": [
+    {"cmd": "hello", "queue": true, "wait": []}
+  ]
+}

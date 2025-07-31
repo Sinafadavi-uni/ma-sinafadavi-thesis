@@ -1,0 +1,13 @@
+###### Requirements without Version Specifiers ######
+hatchling
+wasmtime
+uvicorn
+fastapi
+fastapi-pagination
+python-multipart
+requests
+psutil
+zeroconf
+pydantic
+readerwriterlock
+black

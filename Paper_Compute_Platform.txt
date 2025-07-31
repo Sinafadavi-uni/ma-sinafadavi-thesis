@@ -1,0 +1,313 @@
+                                    Urban Compute Platform
+                              Markus Sommer∗ , Philipp Jahn∗ , Artur Sterz† , Bernd Freisleben∗
+                          ∗ Dept. of Mathematics & Computer Science, University of Marburg, Germany
+                                 E-Mail: {msommer, jahnph, freisleb}@informatik.uni-marburg.de
+
+                                              † tRackIT Systems GmbH, Cölbe, Germany
+                                                     E-Mail: sterz@trackit.systems
+
+
+                       I. I NTRODUCTION                                 security, as well as its language independence. Since, as the
+   In recent years, serverless computing and function-as-a-             name implies, webassembly was originaly designed for use in
+service have become a popular service provided by cloud-                the World Wide Web, it is supported by all major web browsers,
+computing platforms. These techniques allow developers to               which all include their own webassembly runtimes. There
+quickly and easily deploy code without having to concern                are, however, also plenty of standalone runtimes written in a
+themselves with things like server-setup or maintainance.               variety of languages with varying featuresets. For a discussion
+By necessity, these offerings rely on commercial, centralized           on different implementations, please see Section III. While
+cloud-infrastructure and can only be used when an uplink                webassembly applications are genreally sandboxed for security
+to the remote data-centre exists. In this paper, we introduce           reasons, there exists the WebAssembly System Interface (WASI)
+the Urban Compute Platform, a novel distributed and re-                 with which a program can interact with system resources in a
+silient computing-platform which combines the convenience of            well-defined manner.
+serverless-computing with resilience and locality. The platform         B. Data
+is designed to be run in a distributed manner by multi-                    In the Urban Compute Platform, data is organized in a
+ple parties on heterogenious hardware. The Urban Compute                distributed key-value store. Each piece of data in the network
+Platform is meant to be used during emergency scenarios,                needs to have a unique name. Names are organized hierar-
+where communication links to the outside world ay be lost               chically, were each key may have an arbitrary number of
+or unreliable. It allows diverse parties to join their computing        subkeys. Querying a key returns its content and the content of
+ressources into a distributed, local network so they can be used        all subkeys. Each job can specify an arbitray list of arguments
+to support recovery efforts.                                            in the form of keys. The platform will retrieve the data for
+                                                                        the specified names, and provide it to the job for execution.
+                           II. D ESIGN
+                                                                        The result of a job is in turn stored as a key-value pair in the
+   The Urban Compute Platform allows users to dispatch jobs             network
+to the compute network, without needing any knowledge of
+                                                                        C. Nodes
+the network topology. Furthermore, the data necessary for
+each job can be stored in the network, and will be provided               There 4 different node roles. A single piece of physical
+automatically to the job. The data produced by a job will also          hardware may host multiple node roles.
+be stored by the network for retrieval and use in further jobs.
+
+A. Jobs                                                                                  put results                        put data
+                                                                             Executor      get data      Broker             get data         Datastore
+   Since jobs should be platform-/architecture-agnostic, but                             submit job                    paginate data names
+
+still make efficient use of computing resources, we chose
+webassembly as our execution environment. Webassembly                                                   put
+programs can be written in a number of high-level program-                                             result submit
+                                                                                                             put job
+ming languages 1 , and are compiled to webassembly bytecode.                                                data
+
+The execution platform needs to run a webassembly runtime
+to execute the bytecode. In this sense, webassembly is not
+dissimilar to Java, Scala & co which are compiled to bytecode                                             Client
+
+and rely on the jvm for execution. The main difference be-
+tween webassembly and previous ”write once - run anywhere”
+approaches is webassembly’s focus on performance [1] and
+  1 Compilation is handled by LLVM, so in theory, any language with a             Fig. 1. The architecture of Urban Compute Platform
+LLVM-fontened can be used.
+   1) Broker: Broker nodes manage all the other nodes and            D. Node Discovery
+serve as a connection between them. The brokers know
+                                                                        Since Urban Compute Platform in inherently a peer-to-peer
+datastores and can forward store and retrieve requests for the
+                                                                     system, finding peers to connect to is a major challenge for
+other nodes. Because Urban Compute Platform is designed
+                                                                     setup. When a new UCP node starts, it has no knowlege as to to
+for mesh networks where not all nodes might be directly
+                                                                     locations/adresses of UCP nodes it could connect to, or if there
+connected, data transfers have to go through a broker. Brokers
+                                                                     even is a compute network resident in its local area network.
+also manage executors and are responsible for selecting the
+                                                                     In order to allow a network to form, and new nodes to join it,
+executor for a submitted job. Broker nodes are best placed on
+                                                                     we need some form of peer discovery. When a new node enters
+highly connected nodes.
+                                                                     the local area network (LAN), it needs to check whether there
+   2) Executor: The executor nodes are where the webassem-           is at least one broker present. If this is the case, the node may
+bly code is actually executed. Each executor is managed by           connect to this broker as a client/executor/datatsote. In order to
+one broker. When a job is submitted, all relevant data is pulled     increase the network’s resilience, it might be preferable to the
+from the datastores, the job is executed and the result is sent to   node to become a new broker instead and join the peer-group
+either a datastore or a client. An executor node is best placed      of brokers in the LAN. In our initial design, this decision is
+on a node with high computational power.                             made at-random, with a configurable probability of a node
+   3) Datastore: The datastore nodes store all the data re-          deciding to become a broker. If there is no broker present, the
+quired to execute the jobs and the results of jobs. The data-        new node has no choice but to become the first broker.
+store was introduced so that jobs that were not immediately
+executable (for the lack of a capable executor) could be stored      E. Disruption-Tolerance
+and queued later. This way, a client may submit a job, and then         In an emergency scenario, the local network hosting the
+go offline. Once the client reconnects it can query for the job’s    Urban Compute Platform may be volatile. Nodes may join or
+result. Data is accessible through names e.g. name/example.          leave the network for a variety of reasons, e.g. mobile nodes
+Data that is specific to a job starts with this jobs uuid followed   may move in and out of range or devices on backup power
+by a slash. Since job results are available as named data,           may be forces to shut down. Therefore it is necessary for the
+they can be used as the input for another job, thus enabling         Urban Compute Platform to be able to deal with changing
+pipelining. Datastores are known by and accessed through             network topologies.
+brokers. A datastore node is best placed on hardware with               1) Design Tolerance: The first level of disrution-tolerance
+large storage.                                                       is within the design of the Urban Compute Platform itself.
+   4) Client: The client nodes can submit jobs to the network        The initilaization of the network and procedures for new
+and retrieve the results. To do this they search for brokers and     nodes joining is described in Section II-D. Nodes leaving the
+then connect to one.                                                 network, be it temporarily or permanently, pose an additional
+                                                                     challenge.
+   5) Job directory: In order to support a wide range of jobs
+each job has its own directory where all the necessary data is             a) Broker Nodes: Since broker nodes are responsible for
+stored and all results will be written to. This means that for       orchestrating the network, their loss is particularly impactful
+each piece of data used in the job a path at which it is stored      Since Urban Compute Platform is designed to run with multi-
+has to be specified. The jobs cannot access any data outside         ple broker nodes, a broker does not represent a single-point-of-
+this directory since the webassembly runtime is set up to only       failure, but its associated executors and datastores will still be
+allow the webassembly code to access this directory (and its         cut off from the network. In this case there exist the following
+subdirectories). The stdin stream is just a file in the directory    options:
+which is piped into the webassembly runtime.                           •   If the broker rejoins before a preconfigured timeout is
+                                                                           reached, Urban Compute Platform continues like nothing
+   6) Submitting a Job: When submitting a job the following
+                                                                           happened. In the meantime, client nodes will be unable
+steps happen:
+                                                                           to access job results.
+  •   First, all the necessary data is uploaded into the datas-        •   If the broker leaves permanently (or at least for longer
+      tores.                                                               than the timeout-period), but at least one broker remains
+  •   The JobInfo is submitted to the connected broker.                    present in the network, the orphaned nodes will join
+  •   The broker then chooses an executor based on the capa-               another broker.
+      bilities needed.                                                 •   If no other broker is present in the network, a node will
+  •   The JobInfo is submitted to the executor, which starts               need to be (self-)promoted to become the new broker. In
+      populating the jobs directory.                                       this case, the metadata stored on the disappeared broker
+  •   As soon as the jobs directory is set up the job is executed.         is unfortunately lost.
+  •   If the broker currently does not know any executor               Should the broker rejoin the network after the timeout-
+      capable of executing the job it can be stored by the broker    period, it will continue operating as a broker but it will not
+      until an executor becomes available.                           have any associated nodes.
+      b) Network Partition: The coherence of the network is           •   job data: Additional data uploaded as part of the bundle.
+reliant on continuous communication between broker nodes.             •   named data: Additional data to be fetched by the net-
+Should the network links between the brokers break down,                  work before execution.
+the will lead to a partition of the network. Each partition           •   directories: Names of directories to be created inside the
+of the Urban Compute Platform network should continue to                  sanboxed environment for the program.
+function independently, with the obvious limitation that nodes        •   args: Command-line argument supplied to the program
+will no longer be able to access data in the disconnected                 at startup.
+netwsork segments. Should communication between the bro-              •   env: Environment variables.
+ker be reestablied, the partitions should seamlessly reunite into     •   zip results: Results from program execution which are to
+a single network.                                                         be part of the results-archive which is sent to the client.
+   2) Disrution-Tolerant Networking: While the platform’s             •   named results: Results from program execution which
+design is inherently resilient, communication between nodes               are to be made available to the network as named data.
+relies on standard TCP/IP connections. Resilience could be            •   capabilitied: Capability bounding set necessary for pro-
+increased even further by using disruption-tolerant networking            gram execution.
+protocols instead of basic TCP. While this is currently not the       •   result addr: Clint’s address where the results-archive is
+case for our proof-of-concept, it will be the logical next step           to be sent.
+in achieving a truely resilient system.
+                                                                    class Capabilities:
+                    III. I MPLEMENTATION                                memory:      int
+   Our proof-of-concept implementation is written in Python.            disk:        int
+Since the webassembly runtime wasmtime runs only on x86-                cpu_load:    float
+64 machines, the implmementation is currently limited to                cpu_cores:   int
+this architecture. To enable additional architectures, the im-          cpu_freq:    float
+plementation will need to be extended to support additional             has_battery: bool
+webassembly runtimes.                                                   power:       float
+
+A. Jobs                                                                                Listing 2: Job capabilities
+   Each job is described by a JobInfo-structure that contains
+all the information needed to orchestrate the execution of the         The (eqally slightly abridged) capability-definition can be
+job. This includes locations of data (e.g. the executable, an       found in Listing 2. Most of the requirements should be fairly
+image or text file used as input), arguments and environment        self-explanatory. Most importantly, this is merely a set of
+variables, instruction on how to handle the results and the         sample-capabilities for our proof-of-concept. It is possible
+capabilities needed to run the job, a hint that can be used to      (and intended) to further extend these capabilities according
+help in executor selection.                                         to one’s circumstances.
+                                                                    B. Data
+class JobInfo:
+    wasm_bin:           Union[str,                                     In the Urban Compute Platform data is made available to
+     ,→  tuple[str, str]]                                           executors and clients through the datastores. Each piece of data
+    stdin:              Union[str,                                  has to be given a unique name. Name conflicts are resolved
+     ,→  tuple[str, str]]                                           by last write wins.
+    job_data:           dict[str, str]                                 1) Results: The result of a job is a zip file containing files
+    named_data:         dict[str, str]                              and directories that the client can specify on job submission.
+    directories:        list[str]                                   Both stderr and stdout are captured into files and in-
+    args:               list[str]                                   cluded in the results-archive. The zip file can either be sent
+    env:                dict[str, str]                              to a datastore for later retrieval or directly to the requesting
+    zip_results:        dict[str, str]                              client. Besides the result zip, results can also be published to
+    named_results:      dict[str, str]                              the datastores under a name. This is primarily so that jobs
+    capabilities:       Capabilities                                can use the results of other jobs as input. If a job produces a
+    result_addr:        Address                                     varying amount of output files (e.g. a face detection job saving
+                                                                    each face to a different file) all results can be published by
+                    Listing 1: Job metadata                         putting a * after their common prefix and putting a * at the end
+                                                                    of the name they are supposed to be published under. Named
+   The (slightly abbreviated) metadata definition can be found      inputs can be handled in a similar way.
+in Listing 1.
+   • wasm bin: Webassembly executable.                              C. Node Discovery
+   • stdin: File whose contents will be supplied to the program       The discovery of nodes is done via zeroconf. On startup
+     via stdin.                                                     brokers and datastores register as services. Because a node
+might be reachable over different network interfaces with              The brokers receive the capabilities periodically from the
+different IP-Addresses, multiple addresses can be specified         executors. This doubles as the heartbeat showing broker and
+on startup and all of them are announced. When a broker or          executor they are both still online. If an executor notices its
+datastore gets discovered, the discovering node checks whether      broker is offline it searches for a new one.
+it can actually reach the announced node using any of the              1) Execution of the code: The webassembly code is ex-
+specified addresses, choosing the first address that results in a   ecuted using the wasmtime runtime. The wasmtime runtime
+successful connection.                                              is written in Rust and is accessed through python bindings.
+                                                                    wasmtime was chosen because it compiles the webassembly
+D. Node Communication                                               code to native code before execution leading to fast execution.
+   The network communication is done through a REST API             It also allows for easily setting stdin and capturing stdout/st-
+using FastAPI hosted on a uvicorn server. All nodes commu-          derr. The jobs are run in different processes so they do not
+nicate via a broker node. For data requests the brokers act         necessarily interfere with one another or the communication
+as proxies. Data used in the jobs can only be pulled from a         part of the code.
+datastore. Data that is send from client to executor thus has to
+be send from client to broker to datastore to broker to executor,   H. Client
+so four times in total. While this is inefficient it ensures that      Jobs are specified to the client through an Execution Plan.
+all nodes can (indirectly) reach each other in a simple and         The Execution Plan allows to specify multiple jobs and and
+uniform way. The the executor can send the resulting zip file       in which order they are to be executed. It is possible to have
+to the client through the broker. This is so that the client can    jobs run in parallel or have them wait on one another. The
+be notified of the job being done without having to poll the        execution plan also allows to upload non job named data to
+datastores constantly.                                              the network. This could for example be an executable that
+                                                                    multiple jobs use just with different data. Jobs are given by
+E. Broker                                                           name and a JobInfo structure. Each time a job is submitted is
+   In order to send results directly back to a client, the broker   gets a UUID which is randomly generated by the client.
+remembers the job’s id and result address. When the executor
+finishes execution it sends the job’s results to the broker,                               IV. E VALUATION
+which can then forward it to the client. Should the client be          In this section, we present the results of our evaluation. As
+unreachable the result is stored in the datastores instead.         the example workload for our evaluation, we chose an audio
+   All data is accessed through a broker. Since brokers can         classification algorithm which has been trained to recognize
+know multiple datastores each broker has to ask its datastores      the songs of different bird species in envrironmental audio
+whether they have the needed data until it is found or all          recordings.
+have been asked. To minimize the communication the brokers             The input for the classification algorithm was a set of 1000
+cache which datastore they got which data from. In the future,      sound clips which were concatinated to form a single, long
+data names may include routing information to reduce request-       audio stream. The classifier was originally implemented in C
+overhead.                                                           and designed for embedded systems. For our evaluation, we
+                                                                    ran the classifier in three configurations, as seen in Figure 2.
+F. Datastores                                                          In the first scenario, the code is compiled to a x86-64 binary,
+   The datastores store the data in files that have the path        which is run natively on our evaluation hardware. This is
+specified by name in their root directory. Data can be retrieved    obviously the most ”efficient” way to run the code and will
+directly throwing an error if it is not available. Otherwise        serve as the performance baseline.
+datastores can also return a list of all their data. It is also        Next, the code is compiled to webassembly, yielding a file
+possible to paginate the data. For pagination it is also possible   containing the wasm-bytecode. This file is then run via the
+to specify a prefix or a job id to filter for the correct name.     webassembly virtual machine. While webassembly has been
+This is for example used in the brokers cache to get all data       designed for speed and efficiency, there is still some overhead
+a datastore holds for a specific job. Datastores also allow to      involved which will necessarily reduce performance. This will
+query how much space is left to store data. Data can be deleted     serve to quantify the overhead resulting purely from running
+either by name or all job data for a job at once (leaving only      non-native code.
+the result).                                                           Lastly, we run the job through the Urban Compute Platform.
+                                                                    Since the actual execution uses the same webassembly runtime
+G. Executor                                                         as before, the running of the code should take approximately
+   The executors have capabilities associated with them. They       the same time. However, this time the job will have to run
+include free storage, free memory, cpu load, whether the            through the entire UCP pipeline, which includes multiple
+device has a battery and the batteries charge percentage. The       network transfers. This will necessarily be the ”slowest” run
+same capabilities are associated with each job and jobs are         as it has the greatest overhead. However, since this was clear
+only submitted to executors fullfilling these. The capabilities     from the beginning, we are not trying to show any performance
+of an executor can be requested.                                    advantage, compared to local execution. Rather, we are trying
+                                                                                       c) Data Stores: Datastores may either be replicated or
+                        LLVM                                                     unreplicated. In case of replication, the loss of a datastore
+                                                                                 should not lead to any data loss, as replicated instances can
+      C
+                     C        x86-64      x86-64
+    Source
+                  Frontend   Backend    Executable
+                                                          Result                 continue to serve queries. Replication does however come with
+     Code
+                                                                                 some significant downsides in a emergency sceanrio, in that
+                                                                                 it produces significant network traffic. The network min such
+                        LLVM                                                     a scanerio may be limited in ints reliability and bandwidth.
+                                                                                 Bandwidth in particular may be needed to be conserved in
+      C
+                     C        wasm        wasm        WebAssembly
+    Source
+     Code
+                  Frontend   Backend     bytecode     Virtual Machine
+                                                                        Result   order to maintain quality-of-service for different applications.
+                                                                                 Should, therefore, the datastore be unreplicated, then the loss
+                                                                                 of a node will also mean the loss of all its hosted data.
+                        LLVM
+                                                                                                             R EFERENCES
+      C
+    Source
+                     C        wasm        wasm
+                                                        UCP Client
+                                                                                 [1] B. Spies and M. Mock, “An evaluation of webassembly in non-web
+                  Frontend   Backend     bytecode
+     Code                                                                            environments,” in 2021 XLVII Latin American Computing Conference
+                                                                                     (CLEI), 2021, pp. 1–10.
+                                                                                 [2] S. Burleigh, K. Fall, and E. J. Birrane, “Bundle Protocol Version 7,”
+                                                                                     RFC 9171, Jan. 2022. [Online]. Available: https://www.rfc-editor.org/
+                                                                                     info/rfc9171
+                     WebAssembly
+     UCP Broker                        UCP Executor    UCP Broker
+                     Virtual Machine
+
+
+
+
+       Result
+
+
+
+
+                             Fig. 2. Evaluation Workflow
+
+
+
+to quantify the performance tradeoff one has to accept to
+benefit from the flecibility of the Urban Compute Platform.
+
+                               V. F UTURE W ORK
+   While out proof-of-concept implementation includes tha ba-
+sic features necessary for a distributed compute platform, there
+are of course many additional features that would majorly
+improve it.
+
+A. Disruption-tolerant Networking
+  Replacing the currrent TCP/HTTP-based REST-interface
+with a disruption-tolerant networking stack (DTN) would
+be a hughe boon to the platform’s resilience. We will be
+implementing an interface to connect hte Urban Compute
+Platform to a Bundle Protocol Node [2].
+
+B. Data Replication
+     a) Brokers: Brokers should periodically sync their meta-
+data to prevent data from becoming undiscoverable.
+     b) Executors: In case of the loss of an executor node, the
+responsible broker will have to redeploy all jobs which were
+deployed to the vanished executor to another suitable executor.
+Should the executor reappear and try to submit results for jobs,
+these submissions will be handles in a first-come-first-served
+manner, wherein the first result submission will be accepted
+and all others will be rejected.
+
