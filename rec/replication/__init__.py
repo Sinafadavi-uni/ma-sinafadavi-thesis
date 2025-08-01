@@ -11,6 +11,6 @@ __all__ = [
     "VectorClock",
     "CapabilityAwareVectorClock", 
     "CausalMessage",
-    "CausalMessageHandler",
+    "MessageHandler",
     "CapabilityScorer",
 ]
