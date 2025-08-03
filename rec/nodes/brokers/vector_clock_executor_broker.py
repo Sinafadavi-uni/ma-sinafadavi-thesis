@@ -1,219 +1,202 @@
-# Broker w/ Vector Clock & Emergency Jobs!
-# Student-built variant of UCP executor broker — hope this doesn't break stuff
+# 🧪 Vector Clock + Emergency Broker
+# This is my try at extending a job broker with vector clock support and emergency logic
+# Includes pre-warming serverless functions and some basic heuristics
 
-from typing import Dict, List, Optional, Callable
-from uuid import UUID
 import time
+import copy
 import threading
+from uuid import uuid4, UUID
+from typing import Optional, Callable, List, Dict
+from dataclasses import dataclass, field
 from queue import Queue
 
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
-from readerwriterlock.rwlock import RWLockWrite
-
-from rec.model import Capabilities, JobInfo
 from rec.nodes.node import Node
+from rec.model import Capabilities, JobInfo
 from rec.nodetypes.executor import Executor
 from rec.util.log import LOG
 
-from rec.replication.core.vector_clock import VectorClock, CapabilityAwareVectorClock, EmergencyContext
+from rec.replication.core.vector_clock import VectorClock, EmergencyContext, ExecutionType
 from rec.replication.core.causal_message import CausalMessage, MessageHandler
 
 
-# Slightly adjusted job model with emergency stuff + clocks
-class EnhancedQueuedJob(BaseModel):
-    job_id: UUID
-    job_info: JobInfo
-    wait_for: set[UUID]
-    vector_clock: Dict[str, int] = {}  # string keys to avoid annoying Pydantic UUID parsing
-    is_emergency: bool = False
-    emergency_type: str = "none"
-    priority_score: float = 1.0  # kinda rough, might revisit
+@dataclass
+class EnhancedQueuedJob:
+    job_id: str
+    command: str
+    timestamp: float
+    description: str = ""
+    dependencies: List[str] = field(default_factory=list)
+    priority: float = 1.0
+    node_id: UUID = None
+    vector_clock: VectorClock = None
+    emergency_context: EmergencyContext = None
+    execution_type: ExecutionType = ExecutionType.TRADITIONAL
+    function_name: Optional[str] = None
+    requires_pre_warm: bool = False
 
 
-class VectorClockExecutorBroker:
-    """
-    Trying to bolt vector clock logic onto the executor broker
-    without completely rewriting it...
-    """
+class VectorClockExecutorBroker(Node):
+    def __init__(self, capabilities: Capabilities, port: int = 8080, on_job_started: Optional[Callable[[str, str], None]] = None):
+        super().__init__(host=["localhost"], port=port)
+        
+        # Store capabilities separately since Node doesn't handle them
+        self.capabilities = capabilities
 
-    def __init__(self, on_job_started: Callable[[UUID, JobInfo], None]):
-        self.executors: dict[UUID, Executor] = {}
-        self.executor_lock = RWLockWrite()
+        self.node_id = uuid4()
+        self.vector_clock = VectorClock(self.node_id)
+        self.message_handler = MessageHandler(self.node_id, capabilities)
+
+        self.executors: Dict[UUID, Executor] = {}
+        self.executor_lock = threading.Lock()
         self.queued_jobs = Queue()
         self.completed_jobs = set()
-        self.cj_lock = threading.Lock()
         self.should_exit = False
-        self.__on_job_started = on_job_started
-        
-        import uuid
-        self.node_id = uuid.uuid4()
-        self.vector_clock = VectorClock(self.node_id)
-        self.message_handler = MessageHandler(self.node_id, self._get_caps())
 
         self.emergency_context = EmergencyContext("none", "normal")
         self.emergency_jobs = set()
 
-        LOG.info(f"Started broker with ID {self.node_id}")
+        self.serverless_jobs = set()
+        self.warm_functions = set()
+        self.serverless_functions = {}
 
-    def _get_caps(self):
-        # Just some standard numbers — hardcoded for now
-        return Capabilities(cpu_cores=4, memory=8192, power=100.0)
+        self._on_job_started = on_job_started
+        LOG.info(f"Vector Clock Broker started with node ID {self.node_id}")
 
-    def _detect_emergency_job(self, job_info: JobInfo) -> tuple[bool, str]:
-        # basic pattern match on keywords
-        keywords = {
-            'fire': 'fire',
-            'medical': 'medical',
-            'ambulance': 'medical',
-            'emergency': 'general',
-            'urgent': 'general',
-            'critical': 'critical',
-            'disaster': 'disaster'
-        }
-        job_str = str(job_info.model_dump()).lower()
-        for word, category in keywords.items():
-            if word in job_str:
-                LOG.info(f"Emergency keyword '{word}' found — tagging as {category}")
-                return True, category
-        return False, "none"
+    def queue_job(self, job_id, command, description="", dependencies=None):
+        if self.should_exit:
+            raise RuntimeError("Broker is not active")
 
-    def _calculate_job_priority(self, job_info: JobInfo, is_emergency: bool, emergency_type: str) -> float:
-        base = 1.0
+        if dependencies is None:
+            dependencies = []
+
+        is_emergency = self._check_emergency(command, description)
+        priority = self._get_priority(command, description, is_emergency)
+        execution_type = self._get_execution_type(command, description)
+
+        # If job is emergency, update context
         if is_emergency:
-            boost = {
-                'critical': 10.0,
-                'medical': 8.0,
-                'fire': 7.0,
-                'disaster': 6.0,
-                'general': 5.0
-            }
-            return base * boost.get(emergency_type, 5.0)
-        return base
+            self._set_emergency_context(command, description)
 
-    def add_endpoints(self, app: FastAPI):
-        @app.put("/executors/register")
-        def reg_executor(hosts: list[str], executor: Executor, request: Request):
-            LOG.debug(f"Registering exec {executor.id}")
-            self.vector_clock.tick()
-            with self.executor_lock.gen_wlock():
-                self.executors[executor.id] = executor
-            LOG.info(f"Executor {executor.id} is in!")
+        # Serverless-related info
+        function_name = self._extract_function_name(command) if execution_type == ExecutionType.SERVERLESS else None
+        needs_warm = self._should_warm(function_name, is_emergency)
 
-        @app.put("/executors/heartbeat/{exec_id}")
-        def heartbeat(exec_id: UUID, capabilities: Capabilities):
-            LOG.debug(f"Heartbeat from {exec_id}")
-            self.vector_clock.tick()
-
-            with self.executor_lock.gen_wlock():
-                exec_ref = self.executors.get(exec_id)
-                if not exec_ref:
-                    raise HTTPException(404, "Executor not found")
-                exec_ref.cur_caps = capabilities
-                exec_ref.last_update = time.time()
-                # Note: not syncing clocks here, maybe later
-
-        @app.get("/executors/count")
-        def count_execs():
-            self.prune_executor_list()
-            return len(self.executors)
-
-        @app.put("/job/submit/{job_id}")
-        def submit(job_info: JobInfo, job_id: UUID, request: Request, wait_for: Optional[set[UUID]] = None):
-            self.vector_clock.tick()
-            if job_info.result_addr.host == "this":
-                job_info.result_addr.host = request.client.host
-
-            is_emergency, type_ = self._detect_emergency_job(job_info)
-            score = self._calculate_job_priority(job_info, is_emergency, type_)
-
-            if wait_for is None:
-                exec_ = self.capable_executor(job_info.capabilities)
-                if not exec_:
-                    raise HTTPException(503, "No executor available")
-                if exec_.submit_job(job_id, job_info):
-                    self.__on_job_started(job_id, job_info)
-                    if is_emergency:
-                        self.emergency_jobs.add(job_id)
-                    return job_id
-                raise HTTPException(503, "Executor rejected job")
-            else:
-                self.queue_job_enhanced(job_id, job_info, wait_for, is_emergency, type_, score)
-                return job_id
-
-        @app.put("/job/done/{job_id}")
-        def mark_done(job_id: UUID):
-            self.vector_clock.tick()
-            with self.cj_lock:
-                self.completed_jobs.add(job_id)
-                self.emergency_jobs.discard(job_id)
-
-    def capable_executor(self, req_caps: Capabilities) -> Optional[Executor]:
-        self.prune_executor_list()
-        with self.executor_lock.gen_rlock():
-            for ex in self.executors.values():
-                if (ex.cur_caps.memory >= req_caps.memory and
-                    ex.cur_caps.disk >= req_caps.disk and
-                    ex.cur_caps.cpu_cores >= req_caps.cpu_cores):
-                    return ex
-        return None
-
-    def prune_executor_list(self):
-        now = time.time()
-        with self.executor_lock.gen_wlock():
-            for ex_id in list(self.executors):
-                if now - self.executors[ex_id].last_update > 300:
-                    del self.executors[ex_id]
-                    LOG.warning(f"Executor {ex_id} removed due to timeout")
-
-    def queue_job_enhanced(self, job_id, job_info, wait_for, is_emergency, emergency_type, priority_score):
-        if wait_for is None:
-            wait_for = set()
+        # Vector clock updated before queueing
+        self.vector_clock.tick()
 
         job = EnhancedQueuedJob(
             job_id=job_id,
-            job_info=job_info,
-            wait_for=wait_for,
-            vector_clock={str(k): v for k, v in self.vector_clock.clock.items()},
-            is_emergency=is_emergency,
-            emergency_type=emergency_type,
-            priority_score=priority_score
+            command=command,
+            timestamp=time.time(),
+            description=description,
+            dependencies=dependencies,
+            priority=priority,
+            node_id=self.node_id,
+            vector_clock=copy.deepcopy(self.vector_clock),
+            emergency_context=copy.deepcopy(self.emergency_context),
+            execution_type=execution_type,
+            function_name=function_name,
+            requires_pre_warm=needs_warm
         )
-        self.queued_jobs.put(job)
 
-    def delete_job_from_executor(self, job_id: UUID) -> bool:
-        with self.executor_lock.gen_rlock():
-            for exec in self.executors.values():
-                if exec.job_delete(job_id):
-                    return True
+        if is_emergency:
+            self.emergency_jobs.add(job_id)
+
+        if execution_type == ExecutionType.SERVERLESS:
+            self.serverless_jobs.add(job_id)
+            if needs_warm and function_name:
+                self._warm_function(function_name)
+
+        self.queued_jobs.put(job)
+        LOG.info(f"Queued job {job_id} (type: {execution_type}, emergency: {is_emergency})")
+
+        return job
+
+    def _check_emergency(self, cmd, desc):
+        keywords = ["fire", "urgent", "medical", "disaster", "critical"]
+        content = (cmd + " " + desc).lower()
+        return any(word in content for word in keywords)
+
+    def _get_priority(self, cmd, desc, emergency):
+        base = 1.0
+        if emergency:
+            if "critical" in cmd or desc:
+                return base * 10
+            elif "medical" in desc:
+                return base * 8
+            elif "fire" in desc:
+                return base * 7
+            return base * 5
+        if "priority" in desc or "quick" in cmd:
+            return base * 1.5
+        return base
+
+    def _get_execution_type(self, cmd, desc):
+        text = (cmd + " " + desc).lower()
+        if "lambda" in text or "invoke" in text or "serverless" in text:
+            return ExecutionType.SERVERLESS
+        return ExecutionType.TRADITIONAL
+
+    def _set_emergency_context(self, cmd, desc):
+        text = (cmd + " " + desc).lower()
+        if "medical" in text:
+            typ = "medical"
+        elif "fire" in text:
+            typ = "fire"
+        elif "disaster" in text:
+            typ = "disaster"
+        else:
+            typ = "general"
+
+        severity = "high" if "critical" in text else "medium"
+        self.emergency_context = EmergencyContext(typ, severity)
+        LOG.info(f"Emergency set: {typ}/{severity}")
+
+    def _extract_function_name(self, cmd):
+        if "--function-name" in cmd:
+            parts = cmd.split()
+            if "--function-name" in parts:
+                idx = parts.index("--function-name")
+                if idx + 1 < len(parts):
+                    return parts[idx + 1]
+        return None
+
+    def _should_warm(self, fname, emergency):
+        if not fname:
+            return False
+        if emergency:
+            return True
+        stats = self.serverless_functions.get(fname, {})
+        if stats.get("avg_cold_start_ms", 0) > 1000:
+            return True
+        last_time = stats.get("last_execution", 0)
+        if time.time() - last_time > 300:
+            return True
         return False
 
-    def start(self):
-        threading.Thread(target=self.job_scheduler, daemon=True).start()
+    def _warm_function(self, fname):
+        if fname in self.warm_functions:
+            return
+        self.warm_functions.add(fname)
+        self.serverless_functions.setdefault(fname, {})["pre_warmed_at"] = time.time()
+        LOG.info(f"Function {fname} pre-warmed")
 
-    def stop(self):
-        self.should_exit = True
+    def handle_message(self, message: CausalMessage):
+        self.vector_clock.update(message.sender_id, message.timestamp)
+        self.message_handler.handle_message(message)
+        LOG.debug(f"Message from {message.sender_id} processed")
 
-    def job_scheduler(self):
-        while not self.should_exit:
-            try:
-                job = self.queued_jobs.get(timeout=1)
-
-                while not job.wait_for.issubset(self.completed_jobs):
-                    time.sleep(1)
-
-                exec_ = self.capable_executor(job.job_info.capabilities)
-                if exec_ and exec_.submit_job(job.job_id, job.job_info):
-                    self.__on_job_started(job.job_id, job.job_info)
-                    if job.is_emergency:
-                        self.emergency_jobs.add(job.job_id)
-                else:
-                    time.sleep(5 if not job.is_emergency else 2)
-
-            except Exception as e:
-                if "Empty" not in str(e):
-                    LOG.error(f"Job scheduler error: {e}")
-
-
-def create_vector_clock_broker(on_job_started: Callable[[UUID, JobInfo], None]) -> VectorClockExecutorBroker:
-    return VectorClockExecutorBroker(on_job_started)
+    def get_status(self):
+        return {
+            "node_id": str(self.node_id),
+            "vector_clock": self.vector_clock.to_dict(),
+            "emergency": {
+                "type": self.emergency_context.emergency_type,
+                "level": self.emergency_context.level
+            },
+            "queued": self.queued_jobs.qsize(),
+            "emergency_jobs": len(self.emergency_jobs),
+            "serverless_jobs": len(self.serverless_jobs),
+            "warm_functions": len(self.warm_functions),
+            "executors": len(self.executors)
+        }

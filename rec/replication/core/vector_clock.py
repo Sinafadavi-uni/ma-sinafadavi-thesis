@@ -1,170 +1,193 @@
-# Vector Clock for Coordinating Emergency Systems
-# Inspired by Lamport's logical clocks idea
-# Used when system clocks aren't quite trustworthy
+# Vector Clock & Emergency Handling (Student Version)
+# Inspired by Lamport’s logical clocks but extended for emergencies and serverless systems
 
 from typing import Dict, List, Optional
 from uuid import UUID
 from enum import Enum
 
-# Bringing in node capability definitions
 from rec.model import Capabilities
 
 
-# Emergency level indicator – a bit nicer than plain numbers
+# Emergency levels — easier to work with than raw numbers
 class EmergencyLevel(Enum):
     LOW = 1
-    MEDIUM = 2 
+    MEDIUM = 2
     HIGH = 3
     CRITICAL = 4
 
 
-# Basic implementation of a vector clock – follows Lamport's paper
+# Basic vector clock like Lamport described
 class VectorClock:
     def __init__(self, node_id):
         self.node_id = node_id
-        self.clock = {}  # This keeps track of logical time for each node we know
-        
+        self.clock = {}  # Stores timestamp per node
+
     def tick(self):
-        # Increment local time – typically called before sending a message
+        # Increment time for this node
         self.clock[self.node_id] = self.clock.get(self.node_id, 0) + 1
-        
-    def update(self, incoming_clock):
-        # Merge another node's clock into ours
-        for peer_id, time_val in incoming_clock.items():
-            current = self.clock.get(peer_id, 0)
-            self.clock[peer_id] = max(current, time_val)
-        
-        self.tick()  # Bump our clock post-receive
+
+    def update(self, incoming):
+        # Merge with another clock
+        for nid, ts in incoming.items():
+            self.clock[nid] = max(self.clock.get(nid, 0), ts)
+        self.tick()  # bump after merge
+
+    def compare(self, other):
+        # Compare vector clocks
+        all_ids = set(self.clock) | set(other)
+        ours_lagging = theirs_lagging = False
+
+        for nid in all_ids:
+            ours = self.clock.get(nid, 0)
+            theirs = other.get(nid, 0)
+            if ours < theirs:
+                theirs_lagging = True
+            elif ours > theirs:
+                ours_lagging = True
+
+        if ours_lagging and not theirs_lagging:
+            return "after"
+        elif theirs_lagging and not ours_lagging:
+            return "before"
+        return "concurrent"
     
-    def compare(self, incoming_clock):
-        # Determine event order relation between this and another clock
-        all_keys = set(self.clock) | set(incoming_clock)
-        
-        ours_earlier = False
-        theirs_earlier = False
-        
-        for node in all_keys:
-            our_time = self.clock.get(node, 0)
-            their_time = incoming_clock.get(node, 0)
-            if our_time < their_time:
-                theirs_earlier = True
-            elif our_time > their_time:
-                ours_earlier = True
-        
-        if ours_earlier and not theirs_earlier:
-            return 'after'
-        elif theirs_earlier and not ours_earlier:
-            return 'before'
-        return 'concurrent'
+    def to_dict(self):
+        # For status reporting
+        return dict(self.clock)
 
 
-# Holds details of an emergency – still pretty lightweight
+# Stores info about the current emergency
 class EmergencyContext:
     def __init__(self, emergency_type, level, location=None):
-        self.emergency_type = emergency_type  # "fire", "quake", etc
+        self.emergency_type = emergency_type
         self.level = level
         self.location = location
-        self.detected_at = None  # Timestamp might be set later
-    
+        self.detected_at = None
+        self.execution_type = "traditional"  # could be "serverless"
+
     def is_critical(self):
-        # Quick check for serious situations
         return self.level in (EmergencyLevel.HIGH, EmergencyLevel.CRITICAL)
 
+    def is_serverless_compatible(self):
+        return self.emergency_type in [
+            "fire", "medical", "disaster", "general", "critical"
+        ]
 
-# Like a vector clock but smarter – knows about node capabilities
+
+# Whether job runs as normal job, serverless, or both
+class ExecutionType(Enum):
+    TRADITIONAL = "traditional"
+    SERVERLESS = "serverless"
+    HYBRID = "hybrid"
+
+
+# Vector clock that can consider hardware specs
 class CapabilityAwareVectorClock(VectorClock):
-    def __init__(self, node_id, capabilities):
+    def __init__(self, node_id, caps):
         super().__init__(node_id)
-        self.capabilities = capabilities  # This includes CPU, power, etc.
-        
-    def get_capability_score(self, emergency_context=None):
-        # Gives us a rough score for how capable this node is
+        self.capabilities = caps
+
+    def get_capability_score(self, context=None):
         score = 0.0
-        
-        # Add basic specs
-        score += getattr(self.capabilities, 'cpu_cores', 0) * 1.0
-        mem = getattr(self.capabilities, 'memory', 0)
-        score += (mem / 1024) * 0.5
-        
-        power = getattr(self.capabilities, 'power', 0)
-        score += (power / 100) * 2.0
-        
-        # Bonus if emergency and we have special equipment
-        if emergency_context and emergency_context.is_critical():
-            if getattr(self.capabilities, 'has_medical_equipment', False):
-                score += 5.0  # Maybe overkill, but good for triage
-            
+        score += getattr(self.capabilities, "cpu_cores", 0)
+        score += getattr(self.capabilities, "memory", 0) / 1024 * 0.5
+        score += getattr(self.capabilities, "power", 0) / 100 * 2.0
+
+        if context and context.is_critical():
+            if getattr(self.capabilities, "has_medical_equipment", False):
+                score += 5.0
+
         return score
-    
-    def should_handle_emergency(self, context, other_scores):
-        # Try to be the lead responder if we score the highest
+
+    def should_handle_emergency(self, context, peer_scores):
         my_score = self.get_capability_score(context)
-        
-        if not other_scores:  # We're all alone in this
-            return True
-        
-        return my_score >= max(other_scores)
+        return my_score >= max(peer_scores or [0])
 
 
-# This guy helps us sort out which nodes are better for what
+# Just a helper to score nodes for different goals
 class CapabilityScorer:
     def __init__(self):
-        self.strategy = "basic"  # Could tweak this for emergencies or battery-saving
-    
+        self.strategy = "basic"
+
     def score_node(self, caps, context=None):
-        # Depending on mode, pick a different formula
         if self.strategy == "emergency" and context:
             return self._emergency_score(caps, context)
         if self.strategy == "energy_saving":
             return self._energy_score(caps)
         return self._basic_score(caps)
-    
+
     def _basic_score(self, caps):
-        # Really simple scoring – adds the basics
-        score = 0.0
-        score += getattr(caps, 'cpu_cores', 0)
-        score += getattr(caps, 'memory', 0) / 1000
-        score += getattr(caps, 'power', 0) / 50
-        return score
-    
+        s = 0
+        s += getattr(caps, "cpu_cores", 0)
+        s += getattr(caps, "memory", 0) / 1000
+        s += getattr(caps, "power", 0) / 50
+        return s
+
     def _emergency_score(self, caps, ctx):
-        # When it's urgent, factor in special gear
-        base = self._basic_score(caps)
-        
-        if ctx.emergency_type == "medical":
-            if getattr(caps, 'has_medical_equipment', False):
-                base += 10.0
+        score = self._basic_score(caps)
+        if ctx.emergency_type == "medical" and getattr(caps, "has_medical_equipment", False):
+            score += 10
         elif ctx.emergency_type == "fire":
-            base += 2.0  # Placeholder: maybe comms or sensors later
-            
-        return base
-    
+            score += 2
+        return score
+
     def _energy_score(self, caps):
-        # Prioritize saving juice
-        power_score = getattr(caps, 'power', 0) / 10
-        cpu_bonus = getattr(caps, 'cpu_cores', 0) * 0.1
-        return power_score + cpu_bonus
-    
-    def rank_nodes(self, node_cap_pairs, ctx=None):
-        # Score and sort list of (node_id, capabilities)
-        scores = []
-        for node_id, caps in node_cap_pairs:
-            val = self.score_node(caps, ctx)
-            scores.append((node_id, val))
-        
-        return sorted(scores, key=lambda pair: pair[1], reverse=True)
+        return getattr(caps, "power", 0) / 10 + getattr(caps, "cpu_cores", 0) * 0.1
+
+    def rank_nodes(self, node_cap_list, ctx=None):
+        scored = [(nid, self.score_node(caps, ctx)) for nid, caps in node_cap_list]
+        return sorted(scored, key=lambda x: x[1], reverse=True)
 
 
-# Handy way to build an emergency scenario – mostly for tests
-def create_emergency(emergency_type, severity_level, location=None):
-    level_enum = severity_level
-    if isinstance(severity_level, str):
-        level_map = {
-            'low': EmergencyLevel.LOW,
-            'medium': EmergencyLevel.MEDIUM,
-            'high': EmergencyLevel.HIGH,
-            'critical': EmergencyLevel.CRITICAL
-        }
-        level_enum = level_map.get(severity_level.lower(), EmergencyLevel.LOW)
-    
-    return EmergencyContext(emergency_type, level_enum, location)
+# For serverless use cases — extra stuff like cold starts
+class ServerlessVectorClock(VectorClock):
+    def __init__(self, function_id, capabilities=None):
+        super().__init__(function_id)
+        self.capabilities = capabilities or {}
+        self.cold_start_count = 0
+        self.execution_history = []
+        self.is_warm = False
+
+    def mark_cold_start(self):
+        self.cold_start_count += 1
+        self.is_warm = False
+        self.tick()
+
+    def mark_warm_execution(self):
+        self.is_warm = True
+        self.tick()
+
+    def get_function_priority(self, emergency_context=None):
+        base = 1.0
+        if emergency_context and emergency_context.is_critical():
+            multiplier = {
+                "critical": 10,
+                "medical": 8,
+                "fire": 7,
+                "disaster": 6,
+                "general": 5
+            }.get(emergency_context.emergency_type, 5)
+            base *= multiplier
+
+        if self.is_warm and emergency_context and emergency_context.is_critical():
+            base *= 1.2
+
+        return base
+
+    def should_pre_warm(self, emergency_context=None):
+        if emergency_context and emergency_context.is_serverless_compatible():
+            return emergency_context.emergency_type in ["medical", "fire", "critical", "disaster"]
+        return False
+
+
+# A quick way to make emergency objects (useful for testing)
+def create_emergency(em_type, level, loc=None):
+    if isinstance(level, str):
+        level = {
+            "low": EmergencyLevel.LOW,
+            "medium": EmergencyLevel.MEDIUM,
+            "high": EmergencyLevel.HIGH,
+            "critical": EmergencyLevel.CRITICAL
+        }.get(level.lower(), EmergencyLevel.LOW)
+
+    return EmergencyContext(em_type, level, loc)
