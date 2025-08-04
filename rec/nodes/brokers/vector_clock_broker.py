@@ -7,9 +7,27 @@ from uuid import UUID
 
 from rec.model import NodeRole
 from rec.nodes.brokers.databroker import DataBroker
-from rec.nodes.brokers.vector_clock_executor_broker import VectorClockExecutorBroker
+from rec.nodes.brokers.executorbroker import ExecutorBroker
 from rec.nodes.node import Node
 from rec.util.log import LOG
+from rec.replication.core.vector_clock import VectorClock, create_emergency
+
+
+class VectorClockExecutorBroker(ExecutorBroker):
+    """Enhanced executor broker with vector clock capabilities"""
+    
+    def __init__(self, on_job_started):
+        super().__init__(on_job_started)
+        self.node_id = "vector-clock-broker"
+        self.vector_clock = VectorClock(self.node_id)
+        self.emergency_context = create_emergency("none", "low")
+        self.emergency_jobs = set()
+    
+    def delete_job_from_executor(self, job_id: UUID):
+        """Remove job from executor tracking"""
+        with self.cj_lock:
+            self.completed_jobs.discard(job_id)
+            self.emergency_jobs.discard(job_id)
 
 
 class VectorClockBroker(Node):
