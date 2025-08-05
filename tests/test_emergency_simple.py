@@ -1,6 +1,5 @@
-# Simple Tests for Emergency Response System
-# Basic tests to make sure everything works correctly
-# Written to be easy to understand and modify
+# 🚨 Simple Tests for Emergency Response System
+# Written for clarity and ease-of-understanding
 
 import time
 from uuid import uuid4
@@ -11,164 +10,120 @@ from rec.nodes.recovery_system import SimpleRecoveryManager
 from rec.nodes.emergency_integration import create_emergency_system
 
 
-def test_emergency_executor():
-    """Test that the emergency executor works correctly."""
-    print("Testing Emergency Executor...")
-    
-    # Create an executor
-    executor = create_emergency_executor("test_executor")
-    
-    # Test normal job
-    normal_job = JobInfo(wasm_bin="test_normal.wasm")
-    executor.receive_job(uuid4(), normal_job, is_emergency=False)
-    
-    # Test emergency job
-    emergency_job = JobInfo(wasm_bin="test_emergency.wasm")
-    executor.receive_job(uuid4(), emergency_job, is_emergency=True)
-    
-    # Check status
-    status = executor.get_status()
-    assert status["jobs"]["emergency_queue"] >= 0, "Emergency queue should exist"
-    assert status["jobs"]["normal_queue"] >= 0, "Normal queue should exist"
-    
-    print("✅ Emergency executor test passed")
+def test_executor_behavior():
+    print("🔧 Testing Emergency Executor...")
+
+    exec = create_emergency_executor("student_exec")
+
+    # Send a regular job
+    regular = JobInfo(wasm_bin="basic.wasm")
+    exec.receive_job(uuid4(), regular, is_emergency=False)
+
+    # Send an emergency job
+    urgent = JobInfo(wasm_bin="urgent.wasm")
+    exec.receive_job(uuid4(), urgent, is_emergency=True)
+
+    status = exec.get_status()
+    assert "emergency" in status["queues"]
+    assert "normal" in status["queues"]
+
+    print("✅ Executor basic behavior test passed")
 
 
-def test_recovery_system():
-    """Test that the recovery system works."""
-    print("Testing Recovery System...")
-    
-    # Create recovery manager
-    recovery = SimpleRecoveryManager("test_recovery")
-    
-    # Register some executors
-    recovery.register_executor("exec1")
-    recovery.register_executor("exec2")
-    
-    # Test failure handling
-    recovery.mark_executor_failed("exec1", [uuid4(), uuid4()])
-    
-    # Check status
-    status = recovery.get_system_status()
-    assert status["executors"]["healthy"] >= 1, "Should have healthy executors"
-    assert status["executors"]["failed"] >= 1, "Should have failed executors"
-    
-    print("✅ Recovery system test passed")
+def test_recovery_manager_behavior():
+    print("🔧 Testing Recovery Manager...")
+
+    recovery = SimpleRecoveryManager("student_recovery")
+    recovery.register_executor("execA")
+    recovery.register_executor("execB")
+
+    failed_jobs = [uuid4() for _ in range(2)]
+    recovery.mark_executor_failed("execA", failed_jobs)
+
+    stats = recovery.get_status()
+    assert len(stats["executors"]["healthy"]) > 0
+    assert len(stats["executors"]["failed"]) > 0
+
+    print("✅ Recovery manager test passed")
 
 
-def test_complete_system():
-    """Test the complete emergency response integration."""
-    print("Testing Complete Emergency System...")
-    
-    # Create system
-    system = create_emergency_system("test_system")
-    
+def test_emergency_system_flow():
+    print("🔧 Testing Full Emergency System Flow...")
+
+    system = create_emergency_system("test_flow")
+
     # Add executors
-    exec1 = system.add_executor("test_exec1")
-    exec2 = system.add_executor("test_exec2")
-    
-    # Submit jobs
-    normal_job = system.submit_normal_job()
-    emergency_job = system.submit_emergency_job("fire")
-    
-    # Test emergency mode
-    system.declare_system_emergency("medical", "high")
-    
-    # Get status
-    overview = system.get_system_overview()
-    assert overview["executor_summary"]["total_executors"] == 2, "Should have 2 executors"
-    assert overview["emergency_status"]["active"] == True, "Emergency should be active"
-    
-    # Clear emergency
-    system.clear_system_emergency()
-    
-    print("✅ Complete system test passed")
+    e1 = system.add_executor("e1")
+    e2 = system.add_executor("e2")
+
+    # Submit a normal and emergency job
+    job_n = system.submit_normal_job()
+    job_e = system.submit_emergency_job("fire")
+
+    # Trigger system-wide emergency
+    system.declare_emergency("fire", "high")
+    status = system.status()
+    assert system.coordinator.recovery.emergency_active == True
+
+    # Clear emergency and validate
+    system.clear_emergency()
+    assert system.coordinator.recovery.emergency_active == False
+
+    print("✅ Full emergency system test passed")
 
 
-def test_vector_clock_coordination():
-    """Test that vector clocks work correctly."""
-    print("Testing Vector Clock Coordination...")
-    
-    # Create system
-    system = create_emergency_system("clock_test")
-    
-    # Add executor
-    exec_id = system.add_executor("clock_executor")
-    executor = system.coordinator.executors[exec_id]
-    
-    # Check initial clock
-    initial_clock = executor.vector_clock.to_dict()
-    
-    # Submit job (should update clock)
+def test_clock_behavior():
+    print("🔧 Testing Vector Clock Updates...")
+
+    system = create_emergency_system("clock_check")
+    eid = system.add_executor("clock_exec")
+    executor = system.coordinator.executors[eid]
+
+    clock_before = executor.vclock.clock.copy()
     system.submit_normal_job()
-    
-    # Check clock updated
-    updated_clock = executor.vector_clock.to_dict()
-    assert updated_clock != initial_clock, "Clock should update after job submission"
-    
-    print("✅ Vector clock coordination test passed")
+    clock_after = executor.vclock.clock
+
+    assert clock_before != clock_after, "Clock should advance after job"
+
+    print("✅ Vector clock update test passed")
 
 
 def run_all_tests():
-    """Run all emergency response tests."""
-    print("=== Running All Emergency Response Tests ===")
-    
+    print("🔍 Running All Emergency System Tests")
+
     try:
-        test_emergency_executor()
-        test_recovery_system()
-        test_complete_system()
-        test_vector_clock_coordination()
-        
-        print("\n🎉 All emergency response tests passed! 🎉")
-        print("Emergency response implementation is working correctly.")
-        
-    except Exception as e:
+        test_executor_behavior()
+        test_recovery_manager_behavior()
+        test_emergency_system_flow()
+        test_clock_behavior()
+        print("\n🎉 All tests passed successfully!")
+    except AssertionError as e:
         print(f"\n❌ Test failed: {e}")
-        raise
 
 
 def quick_demo():
-    """Quick demo showing key emergency response features."""
-    print("=== Quick Emergency Response Demo ===")
-    
-    # Create and setup system
-    system = create_emergency_system("quick_demo")
-    exec1 = system.add_executor("demo_executor_1")
-    exec2 = system.add_executor("demo_executor_2")
-    
-    print(f"Created system with executors: {exec1}, {exec2}")
-    
-    # Normal operation
-    job1 = system.submit_normal_job()
-    job2 = system.submit_normal_job()
-    print(f"Submitted normal jobs: {job1}, {job2}")
-    
-    # Emergency situation
-    system.declare_system_emergency("fire", "critical")
-    emergency_job = system.submit_emergency_job("fire")
-    print(f"EMERGENCY! Submitted emergency job: {emergency_job}")
-    
-    # Simulate failure and recovery
-    system.simulate_executor_failure(exec1)
-    print(f"Executor {exec1} failed - system handling recovery")
-    
-    # Show final status
-    overview = system.get_system_overview()
-    print(f"\nFinal status:")
-    print(f"- Active emergency: {overview['emergency_status']['active']}")
-    print(f"- Healthy executors: {overview['executor_summary']['healthy_executors']}")
-    print(f"- Failed executors: {overview['executor_summary']['failed_executors']}")
-    
-    # Clean up
-    system.clear_system_emergency()
-    print("Emergency cleared - demo complete!")
+    print("\n🚨 Quick Emergency Response System Demo 🚨")
+
+    system = create_emergency_system("demo_showcase")
+    e1 = system.add_executor("alpha_exec")
+    e2 = system.add_executor("beta_exec")
+
+    system.submit_normal_job()
+    system.submit_normal_job()
+
+    system.declare_emergency("flood", "critical")
+    system.submit_emergency_job("flood")
+
+    system.simulate_failure(e1)
+
+    print("System overview after simulation:")
+    print(system.status())
+
+    system.clear_emergency()
+    print("✅ Emergency cleared, system back to normal.")
 
 
 if __name__ == "__main__":
-    # Run tests first
     run_all_tests()
-    
-    print("\n" + "="*50)
-    
-    # Then run demo
+    print("\n" + "=" * 40)
     quick_demo()

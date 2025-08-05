@@ -1,231 +1,139 @@
-# Simple Emergency Executor for Task 3
-# This handles emergency jobs with vector clock coordination
-# Written to be simple and easy to understand for students
+
+# Processes normal and emergency jobs using a simple vector clock
 
 import time
-from typing import Dict, List
+from typing import Dict
 from uuid import UUID, uuid4
 
-from rec.model import JobInfo, Capabilities
-from rec.replication.core.vector_clock import VectorClock, EmergencyLevel, create_emergency
+from rec.model import JobInfo
+from rec.replication.core.vector_clock import VectorClock, EmergencyLevel
 from rec.util.log import LOG
 
 
 class SimpleEmergencyExecutor:
     """
-    A simple executor that can handle both normal and emergency jobs.
-    Emergency jobs get higher priority and are processed first.
+    A straightforward executor that handles both normal and emergency jobs.
+    Emergency jobs always start first and are limited by capacity.
     """
-    
+
     def __init__(self, executor_id: str = None):
-        # Basic setup
-        self.executor_id = executor_id or f"executor_{uuid4().hex[:8]}"
-        self.vector_clock = VectorClock(self.executor_id)
-        
-        # Job tracking - using simple lists and sets
-        self.normal_jobs = []       # Regular jobs waiting to run
-        self.emergency_jobs = []    # Emergency jobs (higher priority)
-        self.running_jobs = set()   # Jobs currently being executed
-        self.completed_jobs = set() # Jobs that are done
-        
-        # Emergency state
+        self.executor_id = executor_id or f"exec_{uuid4().hex[:6]}"
+        self.vclock = VectorClock(self.executor_id)
+
+        self.normal_jobs = []       # list of (job_id, JobInfo)
+        self.emergency_jobs = []    # list of emergency jobs
+        self.running = set()        # job_ids currently executing
+        self.done = set()           # finished job_ids
+
         self.emergency_level = EmergencyLevel.LOW
-        self.in_emergency_mode = False
-        
-        # Simple capabilities
-        self.max_concurrent_jobs = 3  # How many jobs we can run at once
-        
-        LOG.info(f"Emergency executor {self.executor_id} started")
-    
+        self.in_emergency = False
+
+        self.max_running = 3        # max jobs that run at the same time
+
+        LOG.info(f"{self.executor_id} started")
+
     def receive_job(self, job_id: UUID, job_info: JobInfo, is_emergency: bool = False):
-        """
-        Add a new job to our queue.
-        Emergency jobs go to the emergency queue, others to normal queue.
-        """
-        # Update our vector clock when we get a new job
-        self.vector_clock.tick()
-        
+        self.vclock.tick()
+
         if is_emergency:
             self.emergency_jobs.append((job_id, job_info))
-            LOG.warning(f"Emergency job {job_id} received!")
+            LOG.warning(f"➕ Emergency job {job_id} received")
         else:
             self.normal_jobs.append((job_id, job_info))
-            LOG.info(f"Normal job {job_id} received")
-        
-        # Try to start jobs if we have capacity
-        self._try_start_jobs()
-    
+            LOG.info(f"➕ Normal job {job_id} received")
+
+        self._try_start()
+
     def set_emergency_mode(self, emergency_type: str, level: str):
-        """
-        Put the executor into emergency mode.
-        In emergency mode, we only process emergency jobs.
-        """
-        self.vector_clock.tick()  # Update clock for this state change
-        
-        self.in_emergency_mode = True
-        
-        # Convert string level to enum
-        if level.lower() == "low":
+        self.vclock.tick()
+        self.in_emergency = True
+        try:
+            self.emergency_level = EmergencyLevel[level.upper()]
+        except KeyError:
             self.emergency_level = EmergencyLevel.LOW
-        elif level.lower() == "medium":
-            self.emergency_level = EmergencyLevel.MEDIUM
-        elif level.lower() == "high":
-            self.emergency_level = EmergencyLevel.HIGH
-        elif level.lower() == "critical":
-            self.emergency_level = EmergencyLevel.CRITICAL
-        
-        LOG.warning(f"EMERGENCY MODE: {emergency_type} - {level}")
-        
-        # Emergency mode: stop accepting new normal jobs
-        if self.emergency_level in [EmergencyLevel.HIGH, EmergencyLevel.CRITICAL]:
-            LOG.warning("High/Critical emergency: pausing normal job processing")
-    
+        LOG.warning(f"🚨 Entering emergency: {emergency_type} / {level}")
+
+        if self.emergency_level in (EmergencyLevel.HIGH, EmergencyLevel.CRITICAL):
+            LOG.warning("High/critical mode – pausing normal jobs")
+
     def clear_emergency_mode(self):
-        """
-        Exit emergency mode and return to normal operation.
-        """
-        self.vector_clock.tick()
-        self.in_emergency_mode = False
+        self.vclock.tick()
+        self.in_emergency = False
         self.emergency_level = EmergencyLevel.LOW
-        LOG.info("Emergency mode cleared - returning to normal operation")
-        
-        # Try to start any waiting jobs
-        self._try_start_jobs()
-    
-    def _try_start_jobs(self):
-        """
-        Simple job scheduler. Emergency jobs always go first.
-        """
-        # Check if we have room for more jobs
-        if len(self.running_jobs) >= self.max_concurrent_jobs:
-            return  # Already at capacity
-        
-        # First, try to start emergency jobs
-        while self.emergency_jobs and len(self.running_jobs) < self.max_concurrent_jobs:
-            job_id, job_info = self.emergency_jobs.pop(0)  # Take first emergency job
-            self._start_job(job_id, job_info, is_emergency=True)
-        
-        # Then, try normal jobs (but only if not in high/critical emergency)
-        if not self.in_emergency_mode or self.emergency_level not in [EmergencyLevel.HIGH, EmergencyLevel.CRITICAL]:
-            while self.normal_jobs and len(self.running_jobs) < self.max_concurrent_jobs:
-                job_id, job_info = self.normal_jobs.pop(0)  # Take first normal job
-                self._start_job(job_id, job_info, is_emergency=False)
-    
-    def _start_job(self, job_id: UUID, job_info: JobInfo, is_emergency: bool):
-        """
-        Actually start running a job.
-        This is simplified - in reality it would execute WASM, etc.
-        """
-        self.vector_clock.tick()  # Update clock when starting job
-        self.running_jobs.add(job_id)
-        
-        job_type = "EMERGENCY" if is_emergency else "normal"
-        LOG.info(f"Starting {job_type} job {job_id}")
-        
-        # Simulate job execution (in real system, this would be more complex)
-        # For demo, we'll just mark it as completed after a short delay
-        self._simulate_job_completion(job_id)
-    
-    def _simulate_job_completion(self, job_id: UUID):
-        """
-        Simulate a job finishing.
-        In a real system, this would be called when the job actually completes.
-        """
-        # Simulate some work time
-        time.sleep(0.1)  # Very short for demo
-        
-        self.vector_clock.tick()  # Update clock when job completes
-        self.running_jobs.discard(job_id)
-        self.completed_jobs.add(job_id)
-        
-        LOG.info(f"Job {job_id} completed")
-        
-        # Try to start more jobs now that we have capacity
-        self._try_start_jobs()
-    
+        LOG.info("✅ Emergency cleared – back to normal")
+        self._try_start()
+
+    def _try_start(self):
+        # Start emergency jobs first
+        while self.emergency_jobs and len(self.running) < self.max_running:
+            jid, jinfo = self.emergency_jobs.pop(0)
+            self._start_job(jid, jinfo, emergency=True)
+
+        # Start normal jobs only if not in high emergency
+        if not self.in_emergency or self.emergency_level not in (EmergencyLevel.HIGH, EmergencyLevel.CRITICAL):
+            while self.normal_jobs and len(self.running) < self.max_running:
+                jid, jinfo = self.normal_jobs.pop(0)
+                self._start_job(jid, jinfo, emergency=False)
+
+    def _start_job(self, job_id: UUID, job_info: JobInfo, emergency: bool):
+        self.vclock.tick()
+        self.running.add(job_id)
+        LOG.info(f"👷 Starting {'EMERGENCY' if emergency else 'normal'} job {job_id}")
+
+        # Simulate execution with a short delay
+        time.sleep(0.1)
+        self._complete_job(job_id)
+
+    def _complete_job(self, job_id: UUID):
+        self.vclock.tick()
+        self.running.remove(job_id)
+        self.done.add(job_id)
+        LOG.info(f"✅ Job {job_id} completed")
+        self._try_start()
+
     def get_status(self) -> Dict:
-        """
-        Get current status of the executor.
-        Simple dictionary with all the important info.
-        """
         return {
-            "executor_id": self.executor_id,
-            "vector_clock": self.vector_clock.to_dict(),
-            "in_emergency_mode": self.in_emergency_mode,
-            "emergency_level": self.emergency_level.name if self.emergency_level else "NONE",
-            "jobs": {
-                "emergency_queue": len(self.emergency_jobs),
-                "normal_queue": len(self.normal_jobs),
-                "running": len(self.running_jobs),
-                "completed": len(self.completed_jobs)
+            "executor": self.executor_id,
+            "vector_clock": self.vclock.clock,
+            "emergency_mode": self.in_emergency,
+            "emergency_level": self.emergency_level.name,
+            "queues": {
+                "emergency": len(self.emergency_jobs),
+                "normal": len(self.normal_jobs)
             },
-            "capacity": {
-                "max_concurrent": self.max_concurrent_jobs,
-                "available_slots": self.max_concurrent_jobs - len(self.running_jobs)
-            }
+            "running": len(self.running),
+            "completed": len(self.done),
+            "slots_left": self.max_running - len(self.running),
         }
-    
-    def sync_vector_clock(self, other_clock: Dict):
-        """
-        Synchronize our vector clock with another node's clock.
-        This helps maintain distributed coordination.
-        """
-        self.vector_clock.update(other_clock)
-        LOG.debug(f"Vector clock synchronized: {self.vector_clock.to_dict()}")
+
+    def sync_vector_clock(self, other_clock: Dict[str, int]):
+        self.vclock.update(other_clock)
+        LOG.debug(f"✅ Clock synced: {self.vclock.clock}")
 
 
-# Simple helper function to create emergency executors
 def create_emergency_executor(executor_id: str = None) -> SimpleEmergencyExecutor:
-    """
-    Factory function to create a new emergency executor.
-    Makes it easy for students to create executors.
-    """
+    """Factory function to create emergency executor"""
     return SimpleEmergencyExecutor(executor_id)
 
 
-# Demo function to show how it works
-def demo_emergency_executor():
-    """
-    Simple demonstration of how the emergency executor works.
-    Students can run this to see the system in action.
-    """
-    print("=== Emergency Executor Demo ===")
-    
-    # Create an executor
-    executor = create_emergency_executor("demo_executor")
-    
-    # Add some normal jobs
-    normal_job_1 = JobInfo(wasm_bin="demo_normal_1.wasm")
-    normal_job_2 = JobInfo(wasm_bin="demo_normal_2.wasm")
-    
-    executor.receive_job(uuid4(), normal_job_1, is_emergency=False)
-    executor.receive_job(uuid4(), normal_job_2, is_emergency=False)
-    
-    print("Status after adding normal jobs:")
-    print(executor.get_status())
-    
-    # Declare an emergency
-    executor.set_emergency_mode("fire", "high")
-    
-    # Add an emergency job
-    emergency_job = JobInfo(wasm_bin="demo_emergency.wasm")
-    executor.receive_job(uuid4(), emergency_job, is_emergency=True)
-    
-    print("\nStatus after emergency and emergency job:")
-    print(executor.get_status())
-    
-    # Wait a bit for jobs to complete
-    time.sleep(0.5)
-    
-    print("\nFinal status:")
-    print(executor.get_status())
-    
-    # Clear emergency
-    executor.clear_emergency_mode()
-    
-    return executor
+def demo_executor():
+    print("=== Demo: Emergency Executor ===")
+    execu = SimpleEmergencyExecutor("demoExec")
+    j1 = uuid4(); j2 = uuid4(); j3 = uuid4()
 
+    execu.receive_job(j1, JobInfo(wasm_bin="n1.wasm"), is_emergency=False)
+    execu.receive_job(j2, JobInfo(wasm_bin="n2.wasm"), is_emergency=False)
+    print("Status:", execu.get_status())
+
+    execu.set_emergency_mode("fire", "high")
+    execu.receive_job(j3, JobInfo(wasm_bin="e1.wasm"), is_emergency=True)
+    print("Status during emergency:", execu.get_status())
+
+    time.sleep(0.3)
+    print("Final status:", execu.get_status())
+
+    execu.clear_emergency_mode()
+    print("After clearing emergency:", execu.get_status())
 
 if __name__ == "__main__":
-    # Run the demo if this file is executed directly
-    demo_emergency_executor()
+    demo_executor()
