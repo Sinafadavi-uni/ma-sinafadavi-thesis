@@ -1,9 +1,11 @@
 # Vector Clock Support on a Basic UCP Broker
+# Step 5A: Enhanced with multi-broker coordination for UCP Part B.a compliance
 # Trying to integrate vector clocks without messing with original logic too much
 
 import threading  # Might need for later async stuff?
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 from uuid import UUID
+from datetime import datetime
 
 from rec.model import NodeRole
 from rec.nodes.brokers.databroker import DataBroker
@@ -32,33 +34,41 @@ class VectorClockExecutorBroker(ExecutorBroker):
 
 class VectorClockBroker(Node):
     """
-    Attempt to extend basic broker with vector clock logic.
+    Enhanced broker with vector clock logic and multi-broker coordination.
+    Step 5A: Implements UCP Part B.a) - periodic metadata synchronization between brokers
+    
     Should mostly behave like the original but with a few added features.
     
     Big ideas:
     - We still use the old data broker
     - But now we add VectorClockExecutorBroker to handle jobs more smartly
     - Also added some emergency job handling logic
+    - NEW: Multi-broker coordination for distributed metadata sync
     """
 
-    def __init__(self, host: list[str], port: int, uvicorn_args: Optional[dict[str, Any]] = None):
+    def __init__(self, host: list[str], port: int, uvicorn_args: Optional[dict[str, Any]] = None, 
+                 enable_coordination: bool = True):
         """
         Try to keep the same setup as the regular broker for compatibility.
+        NEW: Added coordination support for multi-broker environments
         """
         super().__init__(host, port, "vector-clock-broker", uvicorn_args)
         
         self.data_broker = DataBroker()  # regular data broker still works fine
         self.executor_broker = VectorClockExecutorBroker(self.data_broker.add_pending_job)
+        self.coordination_enabled = enable_coordination
+        self.coordinator = None
 
         # Register both sets of endpoints
         self.data_broker.add_endpoints(self.fastapi_app)
         self.executor_broker.add_endpoints(self.fastapi_app)
 
-        LOG.info("VectorClockBroker up and running")  # Noting success
+        LOG.info("VectorClockBroker up and running with coordination support")  # Noting success
 
     def add_endpoints(self):
         """
         Adding new endpoints, including vector clock introspection and emergency tools.
+        Step 5A: Added multi-broker coordination endpoints for UCP Part B.a compliance
         Also keeps the old delete endpoint in place.
         """
 
@@ -111,14 +121,90 @@ class VectorClockBroker(Node):
                 "timestamp": self.executor_broker.vector_clock.clock
             }
 
+        # NEW: Multi-broker coordination endpoints for UCP Part B.a
+        @self.fastapi_app.post("/broker/sync-metadata")
+        def sync_metadata(peer_metadata: Dict) -> Dict:
+            """
+            Endpoint for peer brokers to sync metadata
+            Implements UCP Part B.a requirement for periodic sync
+            """
+            try:
+                # Log the sync attempt
+                peer_id = peer_metadata.get("broker_id", "unknown")
+                LOG.debug(f"Receiving metadata sync from peer {peer_id}")
+                
+                # Update our vector clock with peer's clock
+                peer_clock = peer_metadata.get("vector_clock", {})
+                if peer_clock:
+                    self.executor_broker.vector_clock.update(peer_clock)
+                    LOG.debug(f"Updated vector clock after sync with {peer_id}")
+                
+                # Return our current metadata
+                return self._get_broker_metadata_dict()
+                
+            except Exception as e:
+                LOG.error(f"Error during metadata sync: {e}")
+                raise
+
+        @self.fastapi_app.get("/broker/coordination-status") 
+        def get_coordination_status() -> Dict:
+            """Get status of multi-broker coordination"""
+            if self.coordinator:
+                return self.coordinator.get_coordination_status()
+            else:
+                return {
+                    "coordinator_running": False,
+                    "message": "Multi-broker coordination disabled"
+                }
+
+        @self.fastapi_app.get("/broker/metadata")
+        def get_metadata() -> Dict:
+            """Get current broker metadata for coordination"""
+            return self._get_broker_metadata_dict()
+
+    def _get_broker_metadata_dict(self) -> Dict:
+        """Get current broker metadata as dictionary for coordination"""
+        return {
+            "broker_id": str(self.executor_broker.node_id),
+            "vector_clock": self.executor_broker.vector_clock.clock.copy(),
+            "executor_count": len(self.executor_broker.executors),
+            "active_jobs": [str(job_id) for job_id in self.executor_broker.completed_jobs],
+            "emergency_jobs": [str(job_id) for job_id in self.executor_broker.emergency_jobs],
+            "last_updated": datetime.now().isoformat(),
+            "capabilities": {
+                "emergency_handling": True,
+                "vector_clock_support": True,
+                "max_executors": 100,
+                "coordination_enabled": self.coordination_enabled
+            }
+        }
+
     def run(self) -> NodeRole:
         """
         Starts everything up.
+        Step 5A: Enhanced with multi-broker coordination startup
         Hopefully same as original but now more aware of timing/emergencies.
         """
-        LOG.info("Launching vector clock broker")
+        LOG.info("Launching vector clock broker with coordination support")
 
         self.executor_broker.start()  # kicks off the job runner
+
+        # Initialize multi-broker coordination if enabled
+        if self.coordination_enabled:
+            try:
+                # Import here to avoid circular imports
+                from rec.nodes.brokers.multi_broker_coordinator import MultiBrokerCoordinator
+                
+                # Extract port from the host configuration
+                port = self.port if hasattr(self, 'port') else 8000
+                self.coordinator = MultiBrokerCoordinator(self.executor_broker, port)
+                self.coordinator.start_coordination()
+                LOG.info("Multi-broker coordination started successfully")
+                
+            except Exception as e:
+                LOG.warning(f"Failed to start multi-broker coordination: {e}")
+                LOG.info("Continuing without coordination support")
+                self.coordination_enabled = False
 
         # Add listener for datastore events (no changes here)
         self.add_service_listener(
@@ -134,16 +220,26 @@ class VectorClockBroker(Node):
     def stop(self):
         """
         Clean shutdown of both base broker and executor.
+        Step 5A: Enhanced with coordination cleanup
         """
         LOG.info("Gracefully stopping broker now")
+        
+        # Stop coordination first
+        if self.coordinator:
+            try:
+                self.coordinator.stop_coordination()
+                LOG.info("Multi-broker coordination stopped")
+            except Exception as e:
+                LOG.warning(f"Error stopping coordination: {e}")
+        
         super().stop()
         self.executor_broker.stop()
 
 
 # Run this directly to try it out
 if __name__ == "__main__":
-    # Fire up the broker on localhost
-    broker = VectorClockBroker(["127.0.0.1"], 8000)
+    # Fire up the broker on localhost with coordination
+    broker = VectorClockBroker(["127.0.0.1"], 8000, enable_coordination=True)
     try:
         result = broker.run()
         LOG.info(f"Exited with status: {result}")
