@@ -1,10 +1,10 @@
 {
   "validation_suite": "Step_5C_End_to_End_Validation",
-  "start_time": "2025-08-06T16:11:08.711785",
+  "start_time": "2025-08-06T18:40:39.774440",
   "tests": {
     "vector_clock": {
       "test_name": "Vector_Clock_Functionality",
-      "start_time": "2025-08-06T16:11:08.711953",
+      "start_time": "2025-08-06T18:40:39.774596",
       "passed": true,
       "details": {
         "vector_clock_operations": {
@@ -25,11 +25,11 @@
         "tick_functionality": true,
         "update_functionality": true
       },
-      "end_time": "2025-08-06T16:11:08.712118"
+      "end_time": "2025-08-06T18:40:39.774738"
     },
     "conflict_resolution": {
       "test_name": "FCFS_Vector_Clock_Causal_Consistency",
-      "start_time": "2025-08-06T16:11:08.712227",
+      "start_time": "2025-08-06T18:40:39.774816",
       "passed": true,
       "details": {
         "fcfs_executor_tested": true,
@@ -49,9 +49,9 @@
           "queued_jobs": 3,
           "completed_jobs": 1,
           "fcfs_queue": [
-            "Job(df67729b-22d0-45a5-9da4-1ab1861c2d33, submitted=1754489468.713, clock={'test-fcfs-executor': 3})",
-            "Job(69b9c3de-600b-4ba0-a1a9-d6b8f573a3f4, submitted=1754489468.713, clock={'test-fcfs-executor': 4})",
-            "Job(32d64afd-17b2-44d7-8dad-b2220a07712d, submitted=1754489468.714, clock={'test-fcfs-executor': 6, 'other_node': 5})"
+            "Job(a031b0ce-be9b-4466-a4af-b62bdd4130c8, submitted=1754498439.776, clock={'test-fcfs-executor': 3})",
+            "Job(095e3c74-cc31-48c8-b5e8-e8d0aa814dd3, submitted=1754498439.776, clock={'test-fcfs-executor': 4})",
+            "Job(08ddf26d-4775-4362-b677-265a21e6c732, submitted=1754498439.776, clock={'test-fcfs-executor': 6, 'other_node': 5})"
           ]
         }
       },
@@ -60,11 +60,11 @@
         "causal_consistency": true,
         "result_submission_policy": true
       },
-      "end_time": "2025-08-06T16:11:08.714360"
+      "end_time": "2025-08-06T18:40:39.776507"
     },
     "broker_coordination": {
       "test_name": "Basic_Broker_Coordination",
-      "start_time": "2025-08-06T16:11:08.714503",
+      "start_time": "2025-08-06T18:40:39.776585",
       "passed": true,
       "details": {
         "broker_responses": [
@@ -98,7 +98,7 @@
         "responsive_brokers": 2,
         "active_coordinators": 2
       },
-      "end_time": "2025-08-06T16:11:16.817761"
+      "end_time": "2025-08-06T18:40:47.887908"
     }
   },
   "overall_passed": true,
@@ -108,5 +108,5 @@
     "broker_coordination_working": true,
     "step_5c_complete": true
   },
-  "end_time": "2025-08-06T16:11:16.818123"
+  "end_time": "2025-08-06T18:40:47.888513"
 }

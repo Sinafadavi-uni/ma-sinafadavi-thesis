@@ -33,13 +33,18 @@ class VectorClock:
         self.tick()  # bump after merge
 
     def compare(self, other):
-        # Compare vector clocks
-        all_ids = set(self.clock) | set(other)
+        # Compare vector clocks - handle both VectorClock objects and dicts
+        if isinstance(other, VectorClock):
+            other_clock = other.clock
+        else:
+            other_clock = other
+            
+        all_ids = set(self.clock) | set(other_clock)
         ours_lagging = theirs_lagging = False
 
         for nid in all_ids:
             ours = self.clock.get(nid, 0)
-            theirs = other.get(nid, 0)
+            theirs = other_clock.get(nid, 0)
             if ours < theirs:
                 theirs_lagging = True
             elif ours > theirs:

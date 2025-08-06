@@ -67,18 +67,16 @@ class VectorClockExecutor(Executor):
     def update_capabilities(self) -> None:
         """Enhanced capability update with vector clock information"""
         # Call parent capability update
-        super().update_capabilities()
+        caps = super().update_capabilities()
         
         # Add vector clock info to capabilities
         self.vector_clock.tick()
         
-        # Enhanced capabilities include vector clock state
-        self.self_object.capabilities = Capabilities(
-            **self.self_object.capabilities.__dict__,
-            vector_clock_time=self.vector_clock.clock.get(self.executor_id, 0),
-            emergency_mode=self.in_emergency_mode,
-            emergency_level=self.emergency_context.level.name if self.emergency_context else "LOW"
-        )
+        # Note: Base Capabilities class doesn't support extra fields
+        # Vector clock info is tracked separately in self.vector_clock
+        LOG.debug(f"Updated capabilities with vector clock: {self.vector_clock.clock}")
+        
+        return caps
 
     def register_with_broker(self) -> None:
         """Enhanced broker registration with vector clock coordination"""

@@ -218,16 +218,17 @@ def test_capability_enhancement():
     # Update capabilities
     executor.update_capabilities()
     
-    # Check enhanced capabilities
-    capabilities = executor.self_object.capabilities
+    # Check enhanced capabilities - use cur_caps which is the correct attribute
+    capabilities = executor.self_object.cur_caps
     
-    # Should have vector clock information
-    # Note: This depends on Capabilities model enhancement
-    try:
-        assert hasattr(capabilities, 'vector_clock_time') or hasattr(capabilities, '__dict__')
-        print("✅ Enhanced capabilities test passed")
-    except Exception as e:
-        print(f"⚠️  Enhanced capabilities test - model may need updates: {e}")
+    # Should have basic capabilities
+    assert capabilities.memory >= 0
+    assert capabilities.cpu_cores >= 0
+    
+    # Vector clock info is tracked separately in executor.vector_clock
+    assert executor.vector_clock.clock.get("capability_test", 0) > 0
+    
+    print("✅ Enhanced capabilities test passed")
 
 
 def run_all_tests():
