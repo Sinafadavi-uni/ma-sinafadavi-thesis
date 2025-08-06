@@ -127,76 +127,102 @@ class QuickValidationTest:
         return test_result
     
     def test_enhanced_conflict_resolution(self) -> Dict[str, Any]:
-        """Test enhanced conflict resolution capabilities"""
-        LOG.info("⚔️ Testing enhanced conflict resolution")
+        """Test FCFS processing with vector clock causal consistency"""
+        LOG.info("⚔️ Testing FCFS with vector clock causal consistency")
         
-        test_result = {
-            "test_name": "Enhanced_Conflict_Resolution",
+        conflict_resolution_result = {
+            "test_name": "FCFS_Vector_Clock_Causal_Consistency",
             "start_time": datetime.now().isoformat(),
             "passed": False,
             "details": {}
         }
         
         try:
-            from rec.nodes.enhanced_vector_clock_executor import SimpleEnhancedExecutor, ConflictStrategy, JobPriority
-            import tempfile
+            from rec.nodes.enhanced_vector_clock_executor import VectorClockFCFSExecutor, create_fcfs_executor
             
-            # Test different conflict resolution strategies
-            strategies_tested = []
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Note: temp_dir not needed for SimpleEnhancedExecutor
-                
-                for strategy in ConflictStrategy:
-                    strategy_result = {
-                        "strategy": strategy.value,
-                        "test_successful": False
-                    }
-                    
-                    try:
-                        # Create executor with specific strategy
-                        executor_with_strategy = SimpleEnhancedExecutor(
-                            node_id=f"test-{strategy.value}", 
-                            strategy=strategy
-                        )
-                        
-                        # Test basic functionality by getting status
-                        stats = executor_with_strategy.status()
-                        
-                        if stats.get("strategy") == strategy.value:
-                            strategy_result["test_successful"] = True
-                            strategy_result["stats"] = {
-                                "current_strategy": stats.get("strategy"),
-                                "running_jobs": len(stats.get("running", [])),
-                                "node_id": stats.get("node")
-                            }
-                        
-                    except Exception as e:
-                        strategy_result["error"] = str(e)
-                    
-                    strategies_tested.append(strategy_result)
-                    LOG.info(f"✅ Tested strategy: {strategy.value}")
-            
-            test_result["details"]["strategies_tested"] = strategies_tested
-            
-            # Evaluate results
-            successful_strategies = sum(1 for st in strategies_tested if st["test_successful"])
-            test_result["passed"] = successful_strategies == 4  # All 4 strategies should work
-            
-            test_result["summary"] = {
-                "total_strategies": len(strategies_tested),
-                "successful_strategies": successful_strategies,
-                "strategy_names": [st["strategy"] for st in strategies_tested if st["test_successful"]]
+            # Test FCFS processing with vector clock causal consistency
+            test_results = {
+                "fcfs_processing": False,
+                "causal_consistency": False,
+                "result_submission_policy": False
             }
             
-            LOG.info(f"✅ Conflict resolution test: {successful_strategies}/4 strategies working")
+            # Create FCFS executor
+            executor = create_fcfs_executor("test-fcfs-executor")
+            
+            # Test 1: Basic FCFS job submission and processing
+            from uuid import uuid4
+            job1_id = uuid4()
+            job2_id = uuid4() 
+            job3_id = uuid4()
+            
+            # Submit jobs in order
+            success1 = executor.submit_job(job1_id, {"estimated_cpu": 30, "type": "normal"})
+            success2 = executor.submit_job(job2_id, {"estimated_cpu": 60, "type": "high_cpu"})  # Should queue due to conflict
+            success3 = executor.submit_job(job3_id, {"estimated_cpu": 20, "type": "normal"})
+            
+            if success1 and success2 and success3:
+                test_results["fcfs_processing"] = True
+                LOG.info("✅ FCFS job submission working")
+            
+            # Test 2: Vector clock causal consistency
+            initial_clock = executor.vector_clock.clock.copy()
+            executor.sync_vector_clock({"other_node": 5, executor.node_id: 2})
+            updated_clock = executor.vector_clock.clock.copy()
+            
+            if updated_clock != initial_clock:
+                test_results["causal_consistency"] = True
+                LOG.info("✅ Vector clock causal consistency working")
+            
+            # Test 3: First-come-first-served result submission policy
+            # Per thesis: "first result submission will be accepted and all others will be rejected"
+            
+            # Start a job for result testing
+            test_job_id = uuid4()
+            executor.submit_job(test_job_id, {"estimated_cpu": 10, "type": "test"})
+            
+            # Simulate getting job into running state
+            if test_job_id in executor.running_jobs or len(executor.running_jobs) < 2:
+                # Move job to running state if not already there
+                if test_job_id not in executor.running_jobs:
+                    executor.running_jobs.add(test_job_id)
+                
+                # First result submission - should be accepted
+                first_result = executor.handle_result_submission(test_job_id, {"result": "first"})
+                
+                # Second result submission - should be rejected (FCFS policy)
+                second_result = executor.handle_result_submission(test_job_id, {"result": "second"})
+                
+                if first_result and not second_result:
+                    test_results["result_submission_policy"] = True
+                    LOG.info("✅ FCFS result submission policy working")
+            
+            # Overall test success
+            all_tests_passed = all(test_results.values())
+            
+            conflict_resolution_result.update({
+                "passed": all_tests_passed,
+                "details": {
+                    "fcfs_executor_tested": True,
+                    "test_results": test_results,
+                    "executor_status": executor.get_status()
+                },
+                "summary": {
+                    "fcfs_processing": test_results["fcfs_processing"],
+                    "causal_consistency": test_results["causal_consistency"], 
+                    "result_submission_policy": test_results["result_submission_policy"]
+                }
+            })
+            
+            if all_tests_passed:
+                LOG.info("✅ FCFS with vector clock causal consistency: ALL TESTS PASSED")
             
         except Exception as e:
-            test_result["error"] = str(e)
-            LOG.error(f"❌ Conflict resolution test failed: {e}")
+            conflict_resolution_result["error"] = str(e)
+            LOG.error(f"❌ FCFS conflict resolution test failed: {e}")
         
-        test_result["end_time"] = datetime.now().isoformat()
-        return test_result
+        conflict_resolution_result["end_time"] = datetime.now().isoformat()
+        return conflict_resolution_result
     
     def test_vector_clock_functionality(self) -> Dict[str, Any]:
         """Test vector clock functionality"""
