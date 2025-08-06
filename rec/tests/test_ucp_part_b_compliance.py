@@ -43,11 +43,11 @@ class SimpleUCPTest:
         return all(results)
 
     def test_conflict_resolution(self):
-        """Submit jobs to a single executor under different strategies."""
-        exec = create_enhanced_executor("test-exec", ConflictStrategy.CAUSAL)
+        """Submit jobs to different executors with different strategies."""
         patterns = {}
         for strategy in ConflictStrategy:
-            exec.set_conflict_strategy(strategy)
+            # Create a new executor for each strategy
+            exec = create_enhanced_executor("test-exec", strategy)
             outcomes = []
             for info, priority in [
                 ({"estimated_cpu":20}, JobPriority()), 
@@ -57,12 +57,11 @@ class SimpleUCPTest:
                 ok = exec.submit_job(uuid4(), info, priority)
                 outcomes.append(ok)
             patterns[strategy.value] = tuple(outcomes)
-            exec.running_jobs.clear()
         unique = len(set(patterns.values())) > 1
         emergency_prioritized = any(
-            outcomes[1] for outcomes in patterns.values()
+            outcomes[1] for key, outcomes in patterns.items()
             if "emergency" in key
-        for key,outcomes in patterns.items())
+        )
         return unique and emergency_prioritized
 
     def run(self):
