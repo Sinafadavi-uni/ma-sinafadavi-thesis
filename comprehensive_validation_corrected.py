@@ -71,7 +71,7 @@ def test_task_3_emergency_response_system():
     
     try:
         from rec.nodes.emergency_executor import SimpleEmergencyExecutor
-        from rec.nodes.emergency_integration import SimpleEmergencySystem
+        from rec.integration.emergency_integration import SimpleEmergencySystem
         from rec.nodes.recovery_system import SimpleRecoveryManager
         
         # Test emergency executor
@@ -198,6 +198,95 @@ def test_task_5_enhanced_fcfs_executor():
         print(f"❌ Task 5 Failed: {e}")
         return False
 
+def test_task_6_performance_optimization():
+    """Test Task 6: Performance Optimization Framework"""
+    print("🧪 Testing Task 6: Performance Optimization Framework...")
+    
+    try:
+        from rec.performance.vector_clock_optimizer import VectorClockOptimizer
+        from rec.performance.benchmark_suite import PerformanceBenchmarkSuite
+        from rec.performance.scalability_tester import UrbanScalabilityTester
+        
+        # Test vector clock optimizer
+        optimizer = VectorClockOptimizer("perf_test", optimization_level="standard")
+        assert optimizer is not None, "VectorClockOptimizer initialization failed"
+        
+        # Test optimized operations
+        optimizer.optimized_tick()
+        summary = optimizer.get_performance_summary()
+        assert summary is not None, "Performance summary not generated"
+        
+        # Test benchmark suite
+        benchmark = PerformanceBenchmarkSuite()
+        assert benchmark is not None, "PerformanceBenchmarkSuite initialization failed"
+        
+        # Test quick benchmarks
+        results = benchmark.run_all()
+        assert results is not None, "Benchmark results not generated"
+        
+        # Test urban scalability tester
+        tester = UrbanScalabilityTester()
+        assert tester is not None, "UrbanScalabilityTester initialization failed"
+        
+        # Test scalability metrics
+        metrics = tester.run_all()
+        assert metrics is not None, "Scalability metrics not generated"
+        
+        print("✅ Task 6: Performance Optimization Framework - WORKING")
+        return True
+    except Exception as e:
+        print(f"❌ Task 6 Failed: {e}")
+        return False
+
+def test_task_7_fault_tolerance():
+    """Test Task 7: Advanced Fault Tolerance & Recovery"""
+    print("🧪 Testing Task 7: Advanced Fault Tolerance & Recovery...")
+    
+    try:
+        from rec.nodes.fault_tolerance.advanced_fault_tolerance import SimpleFaultDetector, AdvancedRecoveryManager
+        from rec.nodes.fault_tolerance.byzantine_tolerance import SimpleByzantineDetector, SimpleConsensusManager
+        from rec.nodes.fault_tolerance.integration_system import Task7FaultToleranceSystem
+        
+        # Test fault detector
+        detector = SimpleFaultDetector()
+        assert detector is not None, "SimpleFaultDetector initialization failed"
+        assert hasattr(detector, 'node_health'), "Fault detector missing node health tracking"
+        
+        # Test Byzantine detector
+        byzantine = SimpleByzantineDetector("test_node")
+        assert byzantine is not None, "SimpleByzantineDetector initialization failed"
+        assert hasattr(byzantine, 'node_scores'), "Byzantine detector missing reputation tracking system"
+        
+        # Test consensus manager
+        consensus = SimpleConsensusManager("test_node")
+        assert consensus is not None, "SimpleConsensusManager initialization failed"
+        assert hasattr(consensus, 'proposals'), "Consensus manager missing proposals"
+        
+        # Test recovery manager
+        recovery = AdvancedRecoveryManager()
+        assert recovery is not None, "AdvancedRecoveryManager initialization failed"
+        assert hasattr(recovery, 'job_backup_copies'), "Recovery manager missing job backup tracking system"
+        
+        # Test complete fault tolerance system
+        system = Task7FaultToleranceSystem("test_system")
+        assert system is not None, "Task7FaultToleranceSystem initialization failed"
+        assert hasattr(system, 'advanced_recovery'), "System missing advanced recovery manager"
+        assert hasattr(system, 'consensus_manager'), "System missing consensus manager"
+        assert hasattr(system, 'registered_nodes'), "System missing node registration"
+        
+        # Test emergency protocol
+        system.activate_emergency_protocol("Test emergency for validation")
+        assert system.emergency_protocols_active == True, "Emergency protocol not activated"
+        
+        system.deactivate_emergency_protocol()
+        assert system.emergency_protocols_active == False, "Emergency protocol not deactivated"
+        
+        print("✅ Task 7: Advanced Fault Tolerance & Recovery - WORKING")
+        return True
+    except Exception as e:
+        print(f"❌ Task 7 Failed: {e}")
+        return False
+
 def test_integration_data_replication():
     """Test complete data replication integration"""
     print("🧪 Testing Complete Data Replication Integration...")
@@ -281,7 +370,7 @@ def test_ucp_part_b_compliance():
 
 def main():
     """Run comprehensive validation"""
-    print("🚀 COMPREHENSIVE VALIDATION - TASKS 1, 2, 3, 3.5, 5")
+    print("🚀 COMPREHENSIVE VALIDATION - TASKS 1, 2, 3, 3.5, 5, 6, 7")
     print("=" * 60)
     print("Note: Task 4 (Datastore) was removed - not required by UCP Part B")
     print("=" * 60)
@@ -293,6 +382,8 @@ def main():
         test_task_3_5_ucp_executor_enhancement,
         test_broker_coordination_components,
         test_task_5_enhanced_fcfs_executor,
+        test_task_6_performance_optimization,
+        test_task_7_fault_tolerance,
         test_integration_data_replication,
         test_ucp_part_b_compliance
     ]
@@ -317,9 +408,9 @@ def main():
     print(f"❌ Failed: {failed}/{len(tests)}")
     
     if failed == 0:
-        print("\n🎉 ALL TESTS PASSED - READY FOR TASK 6!")
-        print("🎯 Tasks 1, 2, 3, 3.5, 5 are working perfectly")
-        print("🚀 Data replication system fully validated")
+        print("\n🎉 ALL TESTS PASSED - READY FOR TASK 8!")
+        print("🎯 Tasks 1, 2, 3, 3.5, 5, 6, 7 are working perfectly")
+        print("🚀 Data replication system fully validated with fault tolerance")
         print("📝 Note: Task 4 (Datastore) was optional and removed per UCP Part B requirements")
         return True
     else:

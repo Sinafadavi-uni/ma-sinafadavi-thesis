@@ -170,6 +170,11 @@ class PerformanceBenchmarkSuite:
                 bm.vector_clock[bm.broker_id] = i
         return {"metadata_update": self.run_test("Broker Metadata Update", update_meta)}
 
+    def run_all(self):
+        """Run all benchmark tests and return summary"""
+        results = self.run_comprehensive_benchmark()
+        return results
+
     def run_comprehensive_benchmark(self):
         results = {
             "vector_clock": self.run_vector_clock_benchmarks(),
@@ -177,9 +182,20 @@ class PerformanceBenchmarkSuite:
             "broker": self.run_broker_benchmarks()
         }
         
+        # Convert BenchmarkResult objects to dictionaries for JSON serialization
+        def convert_results(data):
+            if isinstance(data, dict):
+                return {k: convert_results(v) for k, v in data.items()}
+            elif isinstance(data, BenchmarkResult):
+                return asdict(data)
+            else:
+                return data
+        
+        json_results = convert_results(results)
+        
         output_file = os.path.join(self.output_dir, f"comprehensive_benchmark_{int(time.time())}.json")
         with open(output_file, "w") as f:
-            json.dump({"results": results, "timestamp": time.time()}, f, indent=2)
+            json.dump({"results": json_results, "timestamp": time.time()}, f, indent=2)
         
         print(f"\n[SUMMARY] Results saved to {output_file}")
         return results

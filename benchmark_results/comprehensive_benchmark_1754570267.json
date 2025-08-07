@@ -1,0 +1,41 @@
+{
+  "results": {
+    "vector_clock": {
+      "tick": {
+        "name": "VectorClock Tick",
+        "duration": 0.00030159950256347656,
+        "memory_delta_mb": 0.0,
+        "cpu_percent": 0.0
+      },
+      "update": {
+        "name": "VectorClock Update",
+        "duration": 0.0016777515411376953,
+        "memory_delta_mb": 0.0,
+        "cpu_percent": 0.0
+      }
+    },
+    "fcfs_executor": {
+      "fcfs_50": {
+        "name": "FCFS Executor 50 jobs",
+        "duration": 0.01648116111755371,
+        "memory_delta_mb": 0.0,
+        "cpu_percent": 0.0
+      },
+      "fcfs_100": {
+        "name": "FCFS Executor 100 jobs",
+        "duration": 0.03274679183959961,
+        "memory_delta_mb": 0.0,
+        "cpu_percent": 0.0
+      }
+    },
+    "broker": {
+      "metadata_update": {
+        "name": "Broker Metadata Update",
+        "duration": 7.534027099609375e-05,
+        "memory_delta_mb": 0.0,
+        "cpu_percent": 0.0
+      }
+    }
+  },
+  "timestamp": 1754570267.3246012
+}

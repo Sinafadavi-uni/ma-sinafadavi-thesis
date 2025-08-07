@@ -171,6 +171,11 @@ class UrbanScalabilityTester:
 
         return metrics
 
+    def run_all(self):
+        """Run all scalability tests and return summary"""
+        summary = self.run_all_scenarios()
+        return summary
+
     def run_all_scenarios(self):
         summary = {}
         for sc in self.scenarios:
