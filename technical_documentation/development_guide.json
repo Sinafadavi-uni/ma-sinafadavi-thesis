@@ -1,0 +1,56 @@
+{
+  "title": "Development Guide",
+  "coding_standards": {
+    "student_friendly_principles": [
+      "Simple over complex - Prioritize clarity over optimization",
+      "Comprehensive comments - Explain academic concepts clearly",
+      "Defensive programming - Extensive error handling and validation",
+      "Progressive complexity - Build from simple to advanced concepts",
+      "Educational focus - Code should teach distributed systems concepts"
+    ],
+    "naming_conventions": [
+      "Use descriptive names that explain purpose",
+      "Follow Python PEP 8 style guidelines",
+      "Prefix emergency-related classes with \"Emergency\" or \"Simple\"",
+      "Use \"VectorClock\" prefix for vector clock-related components"
+    ]
+  },
+  "extending_the_system": {
+    "adding_new_executors": {
+      "description": "How to create new executor types",
+      "steps": [
+        "Inherit from SimpleEmergencyExecutor or VectorClockExecutor",
+        "Implement required methods: receive_job, get_status",
+        "Add vector clock integration: sync_vector_clock",
+        "Include emergency mode support if needed",
+        "Add comprehensive testing and documentation"
+      ]
+    },
+    "adding_emergency_types": {
+      "description": "How to add new emergency types",
+      "steps": [
+        "Update EmergencyLevel enum with new types",
+        "Modify create_emergency function to handle new types",
+        "Update emergency detection logic in brokers",
+        "Add corresponding test cases",
+        "Update documentation with new emergency types"
+      ]
+    }
+  },
+  "testing_guidelines": {
+    "unit_testing": [
+      "Use pytest framework for all tests",
+      "Test each component in isolation",
+      "Include positive and negative test cases",
+      "Test vector clock operations thoroughly",
+      "Validate emergency response scenarios"
+    ],
+    "integration_testing": [
+      "Test complete system workflows",
+      "Validate broker-executor coordination",
+      "Test emergency response coordination",
+      "Verify UCP Part B compliance",
+      "Test fault tolerance mechanisms"
+    ]
+  }
+}

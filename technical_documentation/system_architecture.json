@@ -1,0 +1,64 @@
+{
+  "title": "System Architecture Overview",
+  "architecture_layers": {
+    "presentation_layer": {
+      "description": "User interfaces and demonstration systems",
+      "components": [
+        "SimpleVisualizer - Vector clock state visualization",
+        "SimpleInteractiveDemo - Interactive system exploration",
+        "SimpleDashboard - Real-time system monitoring"
+      ]
+    },
+    "application_layer": {
+      "description": "Core application logic and coordination",
+      "components": [
+        "SimpleEmergencySystem - Emergency response coordination",
+        "CompleteSystemIntegration - Full system integration",
+        "VectorClockOptimizer - Performance optimization"
+      ]
+    },
+    "service_layer": {
+      "description": "Core services and business logic",
+      "components": [
+        "VectorClockExecutor - Production UCP executor",
+        "VectorClockFCFSExecutor - FCFS policy enforcement",
+        "Task7FaultToleranceSystem - Fault tolerance framework"
+      ]
+    },
+    "data_layer": {
+      "description": "Data management and persistence",
+      "components": [
+        "VectorClock - Core vector clock implementation",
+        "CausalConsistencyManager - Consistency management",
+        "MultibrokerCoordinator - Broker coordination"
+      ]
+    }
+  },
+  "component_interactions": {
+    "broker_executor_coordination": {
+      "description": "Coordination between brokers and executors",
+      "mechanism": "Vector clock synchronization via heartbeat messages",
+      "frequency": "Every 60 seconds",
+      "consistency_model": "Causal consistency with FCFS ordering"
+    },
+    "emergency_response_flow": {
+      "description": "Emergency response coordination workflow",
+      "trigger": "Emergency detection or declaration",
+      "coordination": "System-wide emergency mode activation",
+      "priority": "Emergency jobs override normal processing"
+    },
+    "fault_tolerance_mechanisms": {
+      "description": "Multi-level fault detection and recovery",
+      "detection": "Node health monitoring with trend analysis",
+      "recovery": "Consensus-based job reassignment",
+      "byzantine_tolerance": "Reputation-based node scoring"
+    }
+  },
+  "design_patterns": [
+    "Observer Pattern - Event notification and coordination",
+    "Strategy Pattern - Multiple fault tolerance strategies",
+    "Factory Pattern - Component creation and initialization",
+    "State Pattern - Emergency mode state management",
+    "Template Method - Common processing workflows"
+  ]
+}

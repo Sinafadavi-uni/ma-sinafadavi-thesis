@@ -1,0 +1,58 @@
+{
+  "demonstration_overview": {
+    "demo_duration": "3 minutes (within presentation)",
+    "demo_type": "Live interactive demonstration",
+    "backup_plan": "Pre-recorded video demonstration",
+    "technical_requirements": "Laptop with Python 3.12+, terminal access"
+  },
+  "demonstration_script": {
+    "setup_phase": {
+      "duration": "30 seconds",
+      "actions": [
+        "Open terminal and navigate to project directory",
+        "Confirm all systems operational",
+        "Brief explanation of what will be demonstrated"
+      ],
+      "script": "I will now demonstrate the complete thesis system in action. This shows vector clock-based causal consistency for emergency response coordination."
+    },
+    "demo_phase_1": {
+      "title": "Vector Clock Basics",
+      "duration": "45 seconds",
+      "command": "python -c \"from rec.demonstrations.thesis_demo import demo_vector_clock_basics; demo_vector_clock_basics()\"",
+      "expected_output": "Vector clock creation, tick operations, causal ordering demonstration",
+      "explanation": "Here we see Lamport's vector clock algorithm in action, showing how events are ordered causally across distributed nodes."
+    },
+    "demo_phase_2": {
+      "title": "Emergency Response System",
+      "duration": "60 seconds",
+      "command": "python -c \"from rec.demonstrations.thesis_demo import demo_emergency_response; demo_emergency_response()\"",
+      "expected_output": "Emergency detection, priority handling, executor coordination",
+      "explanation": "This demonstrates emergency-aware coordination, showing how high-priority events override normal processing while maintaining causal consistency."
+    },
+    "demo_phase_3": {
+      "title": "Complete System Integration",
+      "duration": "45 seconds",
+      "command": "python -c \"from rec.demonstrations.thesis_demo import demo_complete_system; demo_complete_system()\"",
+      "expected_output": "UCP integration, FCFS policy, fault tolerance",
+      "explanation": "Finally, we see the complete system integration with UCP Part B compliance, FCFS policy enforcement, and fault tolerance mechanisms."
+    }
+  },
+  "backup_demonstration": {
+    "video_file": "thesis_demonstration_backup.mp4",
+    "video_duration": "3 minutes",
+    "video_content": "Complete system demonstration with narration",
+    "usage_scenario": "Technical difficulties or time constraints"
+  },
+  "troubleshooting": {
+    "common_issues": [
+      "Import errors: Verify PYTHONPATH and dependencies",
+      "Permission errors: Check file permissions and directory access",
+      "Network issues: Use offline demonstration mode"
+    ],
+    "fallback_options": [
+      "Static screenshots of demonstration output",
+      "Code walkthrough with explanation",
+      "Architecture diagram discussion"
+    ]
+  }
+}

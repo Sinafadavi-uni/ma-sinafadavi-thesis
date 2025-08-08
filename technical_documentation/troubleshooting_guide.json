@@ -1,0 +1,57 @@
+{
+  "title": "Troubleshooting Guide",
+  "common_issues": {
+    "vector_clock_issues": {
+      "issue": "Vector clock update failures",
+      "symptoms": [
+        "TypeError when calling update() method",
+        "Clock synchronization not working",
+        "Causal relationships incorrect"
+      ],
+      "solutions": [
+        "Ensure passing .clock dict, not VectorClock object: clock.update(other.clock)",
+        "Verify node_id is provided in constructor: VectorClock(\"node_name\")",
+        "Check that tick() is called before local events"
+      ]
+    },
+    "ucp_integration_issues": {
+      "issue": "UCP executor initialization failures",
+      "symptoms": [
+        "Missing required parameters error",
+        "Connection failures to UCP broker",
+        "Job execution not working"
+      ],
+      "solutions": [
+        "Provide all required parameters: host, port, rootdir, executor_id",
+        "Verify network connectivity to broker",
+        "Check UCP broker is running and accessible"
+      ]
+    },
+    "emergency_system_issues": {
+      "issue": "Emergency response not working",
+      "symptoms": [
+        "Emergency jobs not prioritized",
+        "Emergency mode not activating",
+        "System coordination failures"
+      ],
+      "solutions": [
+        "Verify emergency mode activation: set_emergency_mode(type, level)",
+        "Check emergency job submission: is_emergency=True parameter",
+        "Validate system integration and executor registration"
+      ]
+    }
+  },
+  "diagnostic_commands": {
+    "system_health_check": [
+      "python comprehensive_validation_corrected.py",
+      "python -c \"from rec.algorithms.vector_clock import VectorClock; print('Vector clocks working')\""
+    ],
+    "component_validation": [
+      "python -c \"from rec.nodes.emergency_executor import SimpleEmergencyExecutor; print('Emergency system working')\"",
+      "python -c \"from rec.integration.emergency_integration import SimpleEmergencySystem; print('Integration working')\""
+    ],
+    "performance_check": [
+      "python -c \"from rec.performance.benchmark_suite import PerformanceBenchmarkSuite; PerformanceBenchmarkSuite().run_all()\""
+    ]
+  }
+}

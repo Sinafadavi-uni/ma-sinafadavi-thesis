@@ -1,0 +1,64 @@
+{
+  "title": "Complete API Reference",
+  "core_apis": {
+    "VectorClock": {
+      "module": "rec.algorithms.vector_clock",
+      "description": "Core vector clock implementation following Lamport's algorithm",
+      "methods": {
+        "__init__(node_id: str)": "Initialize vector clock for specified node",
+        "tick() -> None": "Increment local clock for new event",
+        "update(other_clock: Dict) -> None": "Update with received vector clock",
+        "compare(other_clock: VectorClock) -> str": "Compare causal relationships",
+        "get_time() -> int": "Get current logical time for this node",
+        "get_clock() -> Dict": "Get complete vector clock state"
+      },
+      "usage_example": "\n# Basic vector clock usage\nfrom rec.algorithms.vector_clock import VectorClock\n\n# Create vector clock\nclock = VectorClock(\"node_1\")\n\n# Process local event\nclock.tick()\n\n# Synchronize with other node\nclock.update(other_node_clock.clock)\n\n# Check causal relationship\nrelationship = clock.compare(other_clock)\n                    "
+    },
+    "SimpleEmergencyExecutor": {
+      "module": "rec.nodes.emergency_executor",
+      "description": "Emergency-aware job executor with priority handling",
+      "methods": {
+        "__init__(executor_id: str)": "Initialize emergency executor",
+        "receive_job(job_id, job_info, is_emergency=False)": "Receive job for processing",
+        "set_emergency_mode(emergency_type, level)": "Activate emergency mode",
+        "clear_emergency_mode()": "Deactivate emergency mode",
+        "get_status() -> Dict": "Get comprehensive executor status"
+      },
+      "usage_example": "\n# Emergency executor usage\nfrom rec.nodes.emergency_executor import SimpleEmergencyExecutor\n\n# Create executor\nexecutor = SimpleEmergencyExecutor(\"emergency_exec_1\")\n\n# Set emergency mode\nexecutor.set_emergency_mode(\"fire\", \"critical\")\n\n# Submit emergency job\nexecutor.receive_job(\"emerg_001\", {\"action\": \"evacuate\"}, is_emergency=True)\n                    "
+    },
+    "VectorClockExecutor": {
+      "module": "rec.nodes.vector_clock_executor",
+      "description": "Production UCP executor with vector clock integration",
+      "methods": {
+        "__init__(host, port, rootdir, executor_id)": "Initialize UCP executor",
+        "set_emergency_mode(emergency_type, level)": "Activate emergency coordination",
+        "clear_emergency_mode()": "Clear emergency state",
+        "sync_vector_clock(other_clock)": "Synchronize vector clocks",
+        "submit_job(job) -> str": "Submit job for execution"
+      },
+      "usage_example": "\n# Production UCP executor\nfrom rec.nodes.vector_clock_executor import VectorClockExecutor\n\n# Create production executor\nexecutor = VectorClockExecutor(\n    host=[\"127.0.0.1\"],\n    port=9999,\n    rootdir=\"/tmp\",\n    executor_id=\"prod_exec_1\"\n)\n\n# Emergency coordination\nexecutor.set_emergency_mode(\"medical\", \"high\")\n                    "
+    }
+  },
+  "integration_apis": {
+    "SimpleEmergencySystem": {
+      "module": "rec.integration.emergency_integration",
+      "description": "Complete emergency response system integration",
+      "key_methods": [
+        "add_executor(executor_id) - Register executor in system",
+        "declare_emergency(type, level) - System-wide emergency declaration",
+        "submit_emergency_job(type, job_info) - Submit priority job",
+        "get_system_overview() - Comprehensive system status"
+      ]
+    },
+    "PerformanceBenchmarkSuite": {
+      "module": "rec.performance.benchmark_suite",
+      "description": "Comprehensive performance benchmarking framework",
+      "key_methods": [
+        "run_all() - Execute complete benchmark suite",
+        "benchmark_vector_clocks() - Vector clock performance testing",
+        "benchmark_emergency_response() - Emergency response benchmarks",
+        "generate_report() - Create performance report"
+      ]
+    }
+  }
+}

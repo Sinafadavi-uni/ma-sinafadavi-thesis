@@ -1,0 +1,144 @@
+{
+  "presentation_overview": {
+    "total_duration": "25 minutes",
+    "slide_count": "18-22 slides (recommended)",
+    "timing_per_slide": "1-1.5 minutes average",
+    "presentation_style": "Academic with technical demonstrations"
+  },
+  "slide_sequence": {
+    "opening_slides": {
+      "slide_1": {
+        "title": "Title Slide",
+        "content": "Thesis title, student name, supervisors, date",
+        "duration": "30 seconds",
+        "notes": "Brief introduction, thank committee"
+      },
+      "slide_2": {
+        "title": "Agenda & Outline",
+        "content": "Presentation structure and timeline",
+        "duration": "30 seconds",
+        "notes": "Set expectations for presentation flow"
+      }
+    },
+    "introduction_section": {
+      "slide_3": {
+        "title": "Problem Statement",
+        "content": "Urban computing challenges, data consistency issues",
+        "duration": "2 minutes",
+        "notes": "Emphasize real-world relevance, emergency scenarios"
+      },
+      "slide_4": {
+        "title": "Research Motivation",
+        "content": "Why vector clocks for urban computing platforms",
+        "duration": "2 minutes",
+        "notes": "Connect problem to solution approach"
+      },
+      "slide_5": {
+        "title": "Research Objectives",
+        "content": "Specific goals and contributions",
+        "duration": "1.5 minutes",
+        "notes": "Clear, measurable objectives"
+      }
+    },
+    "background_section": {
+      "slide_6": {
+        "title": "Background: Vector Clocks",
+        "content": "Lamport's vector clock theory, causal consistency",
+        "duration": "2 minutes",
+        "notes": "Brief but comprehensive theoretical foundation"
+      },
+      "slide_7": {
+        "title": "Urban Computing Platform (UCP)",
+        "content": "UCP architecture, broker-executor model",
+        "duration": "2 minutes",
+        "notes": "Focus on integration points"
+      }
+    },
+    "methodology_section": {
+      "slide_8": {
+        "title": "Research Methodology",
+        "content": "Design science approach, implementation strategy",
+        "duration": "2 minutes",
+        "notes": "Justify methodology choice"
+      },
+      "slide_9": {
+        "title": "System Architecture",
+        "content": "Complete system design, component interactions",
+        "duration": "2.5 minutes",
+        "notes": "Use architecture diagrams, highlight novelty"
+      }
+    },
+    "implementation_section": {
+      "slide_10": {
+        "title": "Core Implementation: Vector Clock System",
+        "content": "Vector clock implementation, emergency integration",
+        "duration": "2 minutes",
+        "notes": "Show code snippets, emphasize student-friendly design"
+      },
+      "slide_11": {
+        "title": "UCP Integration",
+        "content": "Executor enhancement, broker coordination",
+        "duration": "2 minutes",
+        "notes": "Demonstrate UCP Part B compliance"
+      },
+      "slide_12": {
+        "title": "Emergency Response System",
+        "content": "Emergency detection, priority handling, FCFS policy",
+        "duration": "2 minutes",
+        "notes": "Show real-world applicability"
+      },
+      "slide_13": {
+        "title": "Live Demonstration",
+        "content": "Interactive system demonstration",
+        "duration": "3 minutes",
+        "notes": "Prepared demo script, backup video available"
+      }
+    },
+    "evaluation_section": {
+      "slide_14": {
+        "title": "Evaluation Framework",
+        "content": "Validation methodology, performance metrics",
+        "duration": "2 minutes",
+        "notes": "Academic validation approach (Task 8)"
+      },
+      "slide_15": {
+        "title": "Performance Results",
+        "content": "Benchmark results, optimization outcomes",
+        "duration": "2 minutes",
+        "notes": "Use charts and graphs, highlight improvements"
+      },
+      "slide_16": {
+        "title": "Academic Validation",
+        "content": "Academic score 90.7/100, comprehensive testing",
+        "duration": "1.5 minutes",
+        "notes": "Emphasize academic rigor and validation"
+      }
+    },
+    "conclusion_section": {
+      "slide_17": {
+        "title": "Research Contributions",
+        "content": "Novel contributions, theoretical and practical impact",
+        "duration": "2 minutes",
+        "notes": "Clearly articulate contribution to field"
+      },
+      "slide_18": {
+        "title": "Limitations & Future Work",
+        "content": "Current limitations, future research directions",
+        "duration": "1.5 minutes",
+        "notes": "Show awareness of limitations, research continuation"
+      },
+      "slide_19": {
+        "title": "Conclusion",
+        "content": "Summary of achievements, final thoughts",
+        "duration": "1 minute",
+        "notes": "Strong closing statement"
+      },
+      "slide_20": {
+        "title": "Questions & Discussion",
+        "content": "Thank you, ready for questions",
+        "duration": "30 seconds",
+        "notes": "Transition to Q&A session"
+      }
+    }
+  }
+}

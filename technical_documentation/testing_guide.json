@@ -1,0 +1,40 @@
+{
+  "title": "Testing Guide",
+  "test_execution": {
+    "comprehensive_validation": {
+      "command": "python comprehensive_validation_corrected.py",
+      "description": "Run complete system validation (all Tasks 1-9)",
+      "expected_output": "All tasks ✅ WORKING, UCP Part B Compliance ✅ VERIFIED"
+    },
+    "unit_tests": {
+      "command": "python -m pytest tests/ -v",
+      "description": "Execute all unit tests with verbose output",
+      "expected_coverage": "90%+ test coverage across all components"
+    },
+    "performance_tests": {
+      "command": "python -c \"from rec.performance.benchmark_suite import PerformanceBenchmarkSuite; PerformanceBenchmarkSuite().run_all()\"",
+      "description": "Run performance benchmarking suite",
+      "expected_metrics": "Vector clock operations, emergency response times, system throughput"
+    }
+  },
+  "test_categories": {
+    "vector_clock_tests": [
+      "Basic clock operations (tick, update, compare)",
+      "Causal relationship determination",
+      "Clock synchronization across nodes",
+      "Emergency level integration"
+    ],
+    "emergency_response_tests": [
+      "Emergency mode activation and deactivation",
+      "Priority job scheduling",
+      "System-wide emergency coordination",
+      "Recovery manager functionality"
+    ],
+    "ucp_integration_tests": [
+      "Executor initialization with UCP parameters",
+      "Broker-executor coordination",
+      "FCFS policy enforcement",
+      "Production deployment compatibility"
+    ]
+  }
+}

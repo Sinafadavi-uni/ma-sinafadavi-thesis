@@ -1,0 +1,64 @@
+{
+  "title": "Configuration Reference",
+  "vector_clock_configuration": {
+    "node_id": {
+      "type": "string",
+      "required": true,
+      "description": "Unique identifier for the node",
+      "example": "\"node_1\""
+    },
+    "initial_time": {
+      "type": "integer",
+      "required": false,
+      "default": 0,
+      "description": "Initial logical time value"
+    }
+  },
+  "executor_configuration": {
+    "executor_id": {
+      "type": "string",
+      "required": true,
+      "description": "Unique executor identifier"
+    },
+    "max_concurrent_jobs": {
+      "type": "integer",
+      "default": 3,
+      "description": "Maximum number of concurrent jobs"
+    },
+    "emergency_priority": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable emergency job prioritization"
+    }
+  },
+  "ucp_integration_configuration": {
+    "host": {
+      "type": "list[string]",
+      "required": true,
+      "description": "List of host addresses",
+      "example": "[\"127.0.0.1\"]"
+    },
+    "port": {
+      "type": "integer",
+      "required": true,
+      "description": "Port number for UCP communication"
+    },
+    "rootdir": {
+      "type": "string",
+      "required": true,
+      "description": "Root directory for job execution"
+    }
+  },
+  "emergency_system_configuration": {
+    "emergency_levels": {
+      "type": "list[string]",
+      "default": "[\"low\", \"medium\", \"high\", \"critical\"]",
+      "description": "Available emergency levels"
+    },
+    "emergency_types": {
+      "type": "list[string]",
+      "default": "[\"fire\", \"medical\", \"security\", \"natural_disaster\"]",
+      "description": "Supported emergency types"
+    }
+  }
+}
