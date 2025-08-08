@@ -34,10 +34,6 @@ import os
 phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
 sys.path.insert(0, phase1_path)
 
-import vector_clock
-import causal_message
-import causal_consistency
-
 from vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
 from causal_message import CausalMessage, MessageHandler
 from causal_consistency import CausalConsistencyManager

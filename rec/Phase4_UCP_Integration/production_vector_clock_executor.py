@@ -33,12 +33,15 @@ import sys
 import os
 
 # Add UCP integration path
-rec_path = os.path.join(os.path.dirname(__file__), '..', 'rec')
+rec_path = os.path.join(os.path.dirname(__file__), '..')
 sys.path.insert(0, rec_path)
 
 try:
+    # Import UCP base classes - using relative path from rec/Phase4_UCP_Integration
+    sys.path.insert(0, os.path.dirname(__file__) + '/..')
     from nodes.executor import Executor
-    from model import Job, Result
+    from model import JobInfo  
+    from job import ExecutorJob
     from exceptions import JobExecutionError
 except ImportError:
     # Fallback for development environment
@@ -49,12 +52,12 @@ except ImportError:
             self.rootdir = rootdir
             self.executor_id = executor_id
     
-    class Job:
+    class JobInfo:
         def __init__(self, job_id, data):
             self.job_id = job_id
             self.data = data
     
-    class Result:
+    class ExecutorJob:
         def __init__(self, job_id, data):
             self.job_id = job_id
             self.data = data
@@ -245,7 +248,7 @@ class ProductionVectorClockExecutor(Executor):
             
             LOG.info(f"Production executor {self.executor_id} stopped")
     
-    def submit_job(self, job: Job, emergency_context: Any = None) -> bool:
+    def submit_job(self, job: JobInfo, emergency_context: Any = None) -> bool:
         """
         Submit job for execution with vector clock coordination
         
@@ -603,8 +606,8 @@ def demo_production_executor():
     print("✅ Production executor started")
     
     # Create and submit jobs
-    job1 = Job("job_1", {"task": "normal_task"})
-    job2 = Job("job_2", {"task": "emergency_task"})
+    job1 = JobInfo("job_1", {"task": "normal_task"})
+    job2 = JobInfo("job_2", {"task": "emergency_task"})
     
     # Submit normal job
     success1 = executor.submit_job(job1)

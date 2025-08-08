@@ -14,7 +14,7 @@ from datetime import datetime
 import logging
 
 # Import from our local files
-from .vector_clock import VectorClock, EmergencyContext
+from vector_clock import VectorClock, EmergencyContext
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
