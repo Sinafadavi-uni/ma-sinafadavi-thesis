@@ -2,7 +2,7 @@
   "title": "Complete API Reference",
   "core_apis": {
     "VectorClock": {
-      "module": "rec.algorithms.vector_clock",
+      "module": "rec.Phase1_Core_Foundation.vector_clock",
       "description": "Core vector clock implementation following Lamport's algorithm",
       "methods": {
         "__init__(node_id: str)": "Initialize vector clock for specified node",
@@ -12,10 +12,10 @@
         "get_time() -> int": "Get current logical time for this node",
         "get_clock() -> Dict": "Get complete vector clock state"
       },
-      "usage_example": "\n# Basic vector clock usage\nfrom rec.algorithms.vector_clock import VectorClock\n\n# Create vector clock\nclock = VectorClock(\"node_1\")\n\n# Process local event\nclock.tick()\n\n# Synchronize with other node\nclock.update(other_node_clock.clock)\n\n# Check causal relationship\nrelationship = clock.compare(other_clock)\n                    "
+      "usage_example": "\n# Basic vector clock usage\nfrom rec.Phase1_Core_Foundation.vector_clock import VectorClock\n\n# Create vector clock\nclock = VectorClock(\"node_1\")\n\n# Process local event\nclock.tick()\n\n# Synchronize with other node\nclock.update(other_node_clock.clock)\n\n# Check causal relationship\nrelationship = clock.compare(other_clock)\n                    "
     },
     "SimpleEmergencyExecutor": {
-      "module": "rec.nodes.emergency_executor",
+      "module": "rec.Phase2_Node_Infrastructure.emergency_executor",
       "description": "Emergency-aware job executor with priority handling",
       "methods": {
         "__init__(executor_id: str)": "Initialize emergency executor",
@@ -24,10 +24,10 @@
         "clear_emergency_mode()": "Deactivate emergency mode",
         "get_status() -> Dict": "Get comprehensive executor status"
       },
-      "usage_example": "\n# Emergency executor usage\nfrom rec.nodes.emergency_executor import SimpleEmergencyExecutor\n\n# Create executor\nexecutor = SimpleEmergencyExecutor(\"emergency_exec_1\")\n\n# Set emergency mode\nexecutor.set_emergency_mode(\"fire\", \"critical\")\n\n# Submit emergency job\nexecutor.receive_job(\"emerg_001\", {\"action\": \"evacuate\"}, is_emergency=True)\n                    "
+      "usage_example": "\n# Emergency executor usage\nfrom rec.Phase2_Node_Infrastructure.emergency_executor import SimpleEmergencyExecutor\n\n# Create executor\nexecutor = SimpleEmergencyExecutor(\"emergency_exec_1\")\n\n# Set emergency mode\nexecutor.set_emergency_mode(\"fire\", \"critical\")\n\n# Submit emergency job\nexecutor.receive_job(\"emerg_001\", {\"action\": \"evacuate\"}, is_emergency=True)\n                    "
     },
     "VectorClockExecutor": {
-      "module": "rec.nodes.vector_clock_executor",
+      "module": "rec.Phase4_UCP_Integration.production_vector_clock_executor",
       "description": "Production UCP executor with vector clock integration",
       "methods": {
         "__init__(host, port, rootdir, executor_id)": "Initialize UCP executor",
@@ -36,7 +36,7 @@
         "sync_vector_clock(other_clock)": "Synchronize vector clocks",
         "submit_job(job) -> str": "Submit job for execution"
       },
-      "usage_example": "\n# Production UCP executor\nfrom rec.nodes.vector_clock_executor import VectorClockExecutor\n\n# Create production executor\nexecutor = VectorClockExecutor(\n    host=[\"127.0.0.1\"],\n    port=9999,\n    rootdir=\"/tmp\",\n    executor_id=\"prod_exec_1\"\n)\n\n# Emergency coordination\nexecutor.set_emergency_mode(\"medical\", \"high\")\n                    "
+      "usage_example": "\n# Production UCP executor\nfrom rec.Phase4_UCP_Integration.production_vector_clock_executor import ProductionVectorClockExecutor\n\n# Create production executor\nexecutor = ProductionVectorClockExecutor(\n    host=[\"127.0.0.1\"],\n    port=9999,\n    rootdir=\"/tmp\",\n    executor_id=\"prod_exec_1\"\n)\n\n# Emergency coordination\nexecutor.set_emergency_mode(\"medical\", \"high\")\n                    "
     }
   },
   "integration_apis": {

@@ -11,7 +11,7 @@
     ],
     "validation_commands": [
       "python comprehensive_validation_corrected.py",
-      "python -c \"from rec.algorithms.vector_clock import VectorClock; print('✅ Core systems operational')\"",
+      "python -c \"from rec.Phase1_Core_Foundation.vector_clock import VectorClock; print('✅ Core systems operational')\"",
       "python -m pytest tests/ -v"
     ]
   },

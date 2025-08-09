@@ -32,7 +32,7 @@
     "demo_phase_3": {
       "title": "Complete System Integration",
       "duration": "45 seconds",
-      "command": "python -c \"from rec.demonstrations.thesis_demo import demo_complete_system; demo_complete_system()\"",
+      "command": "python -c \"from rec.demonstrations.thesis_demo import demo_complete_thesis; demo_complete_thesis()\"",
       "expected_output": "UCP integration, FCFS policy, fault tolerance",
       "explanation": "Finally, we see the complete system integration with UCP Part B compliance, FCFS policy enforcement, and fault tolerance mechanisms."
     }
