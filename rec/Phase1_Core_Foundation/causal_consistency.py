@@ -12,9 +12,9 @@ from typing import Dict, List, Any, Optional
 import logging
 
 # Import from our local Phase 1 files
-from consistency_manager import BaseConsistencyManager, ConsistencyPolicy
-from vector_clock import VectorClock, EmergencyContext
-from causal_message import CausalMessage, MessageHandler
+from .consistency_manager import BaseConsistencyManager, ConsistencyPolicy
+from .vector_clock import VectorClock, EmergencyContext
+from .causal_message import CausalMessage, MessageHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -37,9 +37,9 @@ import vector_clock
 import causal_message
 import causal_consistency
 
-from vector_clock import VectorClock, EmergencyContext
-from causal_message import CausalMessage, MessageHandler
-from causal_consistency import CausalConsistencyManager
+from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext
+from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
+from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
 
 LOG = logging.getLogger(__name__)
 

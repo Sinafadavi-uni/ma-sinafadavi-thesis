@@ -1,4 +1,4 @@
-###### Requirements without Version Specifiers ######
+###### Core UCP Requirements ######
 hatchling
 wasmtime
 uvicorn
@@ -11,3 +11,57 @@ zeroconf
 pydantic
 readerwriterlock
 black
+
+###### 4-Phase Vector Clock Implementation Requirements ######
+
+# Core Python Libraries (Built-in modules used in all phases)
+# time, threading, logging, uuid, json, dataclasses, enum, queue, concurrent.futures, typing
+# pathlib, collections, itertools, sys, os, traceback, datetime
+
+# Data Serialization & Analysis
+numpy>=1.24.0
+pandas>=2.0.0
+msgpack>=1.0.7
+
+# Testing & Validation Framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
+pytest-cov>=4.1.0
+hypothesis>=6.82.0
+
+# Performance Monitoring & Metrics
+psutil>=5.9.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Development & Code Quality
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.5.0
+flake8>=6.0.0
+
+# Network & Communication
+aiohttp>=3.8.0
+websockets>=11.0.0
+
+# Security (for production deployment)
+cryptography>=41.0.0
+
+# Documentation Generation
+sphinx>=7.0.0
+sphinx-rtd-theme>=1.3.0
+
+# Async & Concurrency Support
+asyncio
+aiofiles>=23.0.0
+
+# Emergency Response & Urban Computing
+# (All functionality implemented in 4-phase architecture - no external dependencies)
+
+###### Phase-Specific Dependencies ######
+
+# Phase 1: Core Foundation - Uses built-in Python modules only
+# Phase 2: Node Infrastructure - Threading, logging, uuid
+# Phase 3: Core Implementation - Concurrent processing, advanced data structures  
+# Phase 4: UCP Integration - Production monitoring, deployment tools

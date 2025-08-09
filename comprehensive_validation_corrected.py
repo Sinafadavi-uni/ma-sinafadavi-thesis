@@ -19,7 +19,7 @@ def test_task_1_vector_clock_foundation():
     print("🧪 Testing Task 1: Vector Clock Foundation...")
     
     try:
-        from rec.replication.core.vector_clock import VectorClock
+        from rec.Phase1_Core_Foundation.vector_clock import VectorClock
         
         # Test basic vector clock operations
         clock1 = VectorClock("node1")
@@ -49,7 +49,7 @@ def test_task_2_emergency_detection():
     print("🧪 Testing Task 2: Emergency Detection and Response...")
     
     try:
-        from rec.replication.core.vector_clock import EmergencyLevel, create_emergency
+        from rec.Phase1_Core_Foundation.vector_clock import EmergencyLevel, create_emergency
         
         # Test emergency level classification
         assert EmergencyLevel.LOW is not None, "Emergency levels not defined"
@@ -70,9 +70,9 @@ def test_task_3_emergency_response_system():
     print("🧪 Testing Task 3: Emergency Response System...")
     
     try:
-        from rec.nodes.emergency_executor import SimpleEmergencyExecutor
-        from rec.integration.emergency_integration import SimpleEmergencySystem
-        from rec.nodes.recovery_system import SimpleRecoveryManager
+        from rec.Phase2_Node_Infrastructure.emergency_executor import SimpleEmergencyExecutor
+        from rec.Phase3_Core_Implementation.emergency_integration import SimpleEmergencySystem
+        from rec.Phase2_Node_Infrastructure.recovery_system import SimpleRecoveryManager
         
         # Test emergency executor
         executor = SimpleEmergencyExecutor()

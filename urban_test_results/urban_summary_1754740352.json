@@ -1,0 +1,29 @@
+{
+  "timestamp": 1754740352.3814368,
+  "results": {
+    "SmallTown": {
+      "city_name": "SmallTown",
+      "total_nodes": 10,
+      "jobs_processed": 158761,
+      "duration": 30.000666618347168,
+      "avg_response_time": 0.00018724868780853546,
+      "throughput": 5291.915743729119
+    },
+    "MediumCity": {
+      "city_name": "MediumCity",
+      "total_nodes": 10,
+      "jobs_processed": 136393,
+      "duration": 33.34948778152466,
+      "avg_response_time": 0.0002428287118796779,
+      "throughput": 4089.8079422845167
+    },
+    "Metropolis": {
+      "city_name": "Metropolis",
+      "total_nodes": 10,
+      "jobs_processed": 3943,
+      "duration": 31.335453271865845,
+      "avg_response_time": 0.007920709866846148,
+      "throughput": 125.83191204513945
+    }
+  }
+}

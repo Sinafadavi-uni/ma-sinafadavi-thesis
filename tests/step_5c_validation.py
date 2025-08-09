@@ -70,13 +70,12 @@ import sys
 import os
 sys.path.insert(0, "{self.workspace_path}")
 
-from rec.nodes.brokers.vector_clock_broker import VectorClockBroker
+from rec.nodes.broker import Broker
 
 # Start coordinated broker
-broker = VectorClockBroker(
+broker = Broker(
     host=["127.0.0.1"], 
-    port={port},
-    enable_coordination=True
+    port={port}
 )
 
 try:
