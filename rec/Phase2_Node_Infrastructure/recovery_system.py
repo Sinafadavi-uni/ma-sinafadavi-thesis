@@ -21,30 +21,27 @@ Based on distributed systems fault tolerance with enhancements for:
 import time
 import threading
 import logging
-from typing import Dict, Set, Optional, List, Tuple
-from uuid import UUID, uuid4
+from typing import Dict, Set, Optional, List
+from uuid import uuid4
 from dataclasses import dataclass, field
 from enum import Enum
 from abc import ABC, abstractmethod
+import sys
+import os
 
-# Import Phase 1 foundation
+# Phase 1 imports
 import sys
 import os
 phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
 sys.path.insert(0, phase1_path)
 
-import vector_clock
-import causal_message
-import causal_consistency
-
-from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext
+from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, create_emergency
 from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
 from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
 
 LOG = logging.getLogger(__name__)
 
 class NodeStatus(Enum):
-    """Node status enumeration"""
     HEALTHY = "healthy"
     SUSPECTED = "suspected"
     FAILED = "failed"
@@ -53,7 +50,6 @@ class NodeStatus(Enum):
 
 @dataclass
 class NodeInfo:
-    """Information about a monitored node"""
     node_id: str
     host: str
     port: int
@@ -63,14 +59,13 @@ class NodeInfo:
     emergency_context: Optional[EmergencyContext] = None
     failure_count: int = 0
     recovery_attempts: int = 0
-    
+
     def __post_init__(self):
         if self.vector_clock is None:
             self.vector_clock = VectorClock(self.node_id)
 
 @dataclass
 class RecoveryAction:
-    """Recovery action for failed node"""
     action_id: str
     target_node: str
     action_type: str
@@ -80,490 +75,314 @@ class RecoveryAction:
     scheduled_at: float = field(default_factory=time.time)
 
 class RecoveryStrategy(ABC):
-    """Abstract base for recovery strategies"""
-    
     @abstractmethod
     def should_recover(self, node_info: NodeInfo) -> bool:
-        """Determine if node should be recovered"""
         pass
-    
+
     @abstractmethod
     def create_recovery_plan(self, node_info: NodeInfo) -> List[RecoveryAction]:
-        """Create recovery plan for failed node"""
         pass
 
 class SimpleRecoveryStrategy(RecoveryStrategy):
-    """Simple recovery strategy with emergency awareness"""
-    
     def __init__(self, max_failures: int = 3, recovery_timeout: float = 300.0):
         self.max_failures = max_failures
         self.recovery_timeout = recovery_timeout
-    
+
     def should_recover(self, node_info: NodeInfo) -> bool:
-        """Determine if node should be recovered"""
         if node_info.status == NodeStatus.FAILED:
-            # Always attempt recovery if under failure limit
             if node_info.recovery_attempts < self.max_failures:
                 return True
-            
-            # In emergency, attempt more recoveries
             if node_info.emergency_context and node_info.emergency_context.is_critical():
                 return node_info.recovery_attempts < (self.max_failures * 2)
-        
         return False
-    
+
     def create_recovery_plan(self, node_info: NodeInfo) -> List[RecoveryAction]:
-        """Create recovery plan for failed node"""
         actions = []
-        
-        # Action 1: Restart node service
-        restart_action = RecoveryAction(
+
+        restart = RecoveryAction(
             action_id=f"restart-{node_info.node_id}-{uuid4()}",
             target_node=node_info.node_id,
             action_type="restart_service",
-            priority=1,
             emergency_context=node_info.emergency_context
         )
-        actions.append(restart_action)
-        
-        # Action 2: Verify node health
-        verify_action = RecoveryAction(
+        verify = RecoveryAction(
             action_id=f"verify-{node_info.node_id}-{uuid4()}",
             target_node=node_info.node_id,
             action_type="verify_health",
             priority=2,
             emergency_context=node_info.emergency_context
         )
-        actions.append(verify_action)
-        
-        # Emergency action: Failover if critical
+        actions.append(restart)
+        actions.append(verify)
+
         if node_info.emergency_context and node_info.emergency_context.is_critical():
-            failover_action = RecoveryAction(
+            failover = RecoveryAction(
                 action_id=f"failover-{node_info.node_id}-{uuid4()}",
                 target_node=node_info.node_id,
                 action_type="emergency_failover",
-                priority=0,  # Highest priority
+                priority=0,
                 emergency_context=node_info.emergency_context
             )
-            actions.insert(0, failover_action)  # Insert at beginning
-        
+            actions.insert(0, failover)
+
         return actions
 
 class SimpleRecoveryManager:
-    """
-    Simple recovery manager for distributed nodes with vector clock coordination
-    
-    Features:
-    - Health monitoring with vector clock timestamps
-    - Failure detection based on heartbeat timeouts
-    - Emergency-aware recovery prioritization
-    - Causal consistency preservation during recovery
-    """
-    
     def __init__(self, manager_id: str = None, heartbeat_timeout: float = 30.0):
-        """Initialize recovery manager"""
         self.manager_id = manager_id or f"recovery-{uuid4()}"
         self.vector_clock = VectorClock(self.manager_id)
         self.heartbeat_timeout = heartbeat_timeout
-        
-        # Node management
+
         self.monitored_nodes: Dict[str, NodeInfo] = {}
         self.node_lock = threading.RLock()
-        
-        # Recovery management
+
         self.recovery_strategy = SimpleRecoveryStrategy()
         self.recovery_queue: List[RecoveryAction] = []
         self.recovery_lock = threading.RLock()
-        
-        # Emergency and consistency management
+
         self.current_emergency: Optional[EmergencyContext] = None
         self.message_handler = MessageHandler(self.manager_id)
         self.consistency_manager = CausalConsistencyManager(self.manager_id)
-        
-        # Thread management
+
         self.should_exit = False
         self.monitor_thread = None
         self.recovery_thread = None
-        
+
         LOG.info(f"RecoveryManager {self.manager_id} initialized")
-    
+
     def register_node(self, node_id: str, host: str, port: int) -> bool:
-        """
-        Register node for monitoring
-        
-        Args:
-            node_id: Unique node identifier
-            host: Node host address
-            port: Node port
-            
-        Returns:
-            True if registration successful
-        """
         self.vector_clock.tick()
-        
-        node_info = NodeInfo(
-            node_id=node_id,
-            host=host,
-            port=port
-        )
-        
+        node = NodeInfo(node_id=node_id, host=host, port=port)
+
         with self.node_lock:
-            self.monitored_nodes[node_id] = node_info
+            self.monitored_nodes[node_id] = node
             LOG.info(f"Node {node_id} registered for monitoring")
-        
+
         return True
-    
-    def process_heartbeat(self, node_id: str, vector_clock_state: dict = None,
-                         emergency_context: EmergencyContext = None) -> bool:
-        """
-        Process heartbeat from monitored node
-        
-        Args:
-            node_id: Node sending heartbeat
-            vector_clock_state: Node's vector clock state
-            emergency_context: Current emergency context
-            
-        Returns:
-            True if heartbeat processed successfully
-        """
+
+    def process_heartbeat(self, node_id: str, vector_clock_state: dict = None, emergency_context: EmergencyContext = None) -> bool:
         with self.node_lock:
-            node_info = self.monitored_nodes.get(node_id)
-            if node_info is None:
+            node = self.monitored_nodes.get(node_id)
+            if not node:
                 LOG.warning(f"Heartbeat from unregistered node {node_id}")
                 return False
-            
-            # Update node info
-            node_info.last_heartbeat = time.time()
-            node_info.status = NodeStatus.HEALTHY
-            node_info.emergency_context = emergency_context
-            
-            # Update vector clocks
+
+            node.last_heartbeat = time.time()
+            node.status = NodeStatus.HEALTHY
+            node.emergency_context = emergency_context
+
             if vector_clock_state:
-                node_info.vector_clock.update(vector_clock_state)
+                node.vector_clock.update(vector_clock_state)
                 self.vector_clock.update(vector_clock_state)
-            
-            # Tick for heartbeat event
+
             self.vector_clock.tick()
-            
-            LOG.debug(f"Heartbeat processed from node {node_id}")
+            LOG.debug(f"Heartbeat from {node_id} processed")
             return True
-    
+
     def detect_node_failure(self, node_id: str, reason: str = "timeout") -> bool:
-        """
-        Manually mark node as failed
-        
-        Args:
-            node_id: Failed node
-            reason: Failure reason
-            
-        Returns:
-            True if failure recorded
-        """
         with self.node_lock:
-            node_info = self.monitored_nodes.get(node_id)
-            if node_info is None:
+            node = self.monitored_nodes.get(node_id)
+            if not node:
                 return False
-            
+
             self.vector_clock.tick()
-            
-            node_info.status = NodeStatus.FAILED
-            node_info.failure_count += 1
-            
-            LOG.warning(f"Node {node_id} marked as failed: {reason}")
-            
-            # Schedule recovery if appropriate
-            if self.recovery_strategy.should_recover(node_info):
-                self._schedule_recovery(node_info)
-            
+            node.status = NodeStatus.FAILED
+            node.failure_count += 1
+
+            LOG.warning(f"Node {node_id} failed: {reason}")
+            if self.recovery_strategy.should_recover(node):
+                self._schedule_recovery(node)
             return True
-    
+
     def set_emergency_mode(self, emergency_type: str, priority_level: str) -> None:
-        """
-        Activate emergency mode affecting recovery behavior
-        
-        Args:
-            emergency_type: Type of emergency
-            priority_level: Priority level
-        """
-        from vector_clock import create_emergency
-        
         self.vector_clock.tick()
         self.current_emergency = create_emergency(emergency_type, priority_level)
-        
-        # Update all monitored nodes with emergency context
+
         with self.node_lock:
-            for node_info in self.monitored_nodes.values():
-                node_info.emergency_context = self.current_emergency
-        
-        LOG.warning(f"Recovery emergency mode activated: {emergency_type} ({priority_level})")
-    
+            for node in self.monitored_nodes.values():
+                node.emergency_context = self.current_emergency
+
+        LOG.warning(f"Emergency mode: {emergency_type} ({priority_level})")
+
     def clear_emergency_mode(self) -> None:
-        """Clear emergency mode"""
         self.vector_clock.tick()
         self.current_emergency = None
-        
-        # Clear emergency from all nodes
+
         with self.node_lock:
-            for node_info in self.monitored_nodes.values():
-                node_info.emergency_context = None
-        
-        LOG.info("Recovery emergency mode cleared")
-    
+            for node in self.monitored_nodes.values():
+                node.emergency_context = None
+
+        LOG.info("Emergency mode cleared")
+
     def get_node_status(self, node_id: str) -> Optional[NodeStatus]:
-        """Get status of monitored node"""
         with self.node_lock:
-            node_info = self.monitored_nodes.get(node_id)
-            return node_info.status if node_info else None
-    
+            node = self.monitored_nodes.get(node_id)
+            return node.status if node else None
+
     def get_healthy_nodes(self) -> List[str]:
-        """Get list of healthy node IDs"""
         with self.node_lock:
-            return [
-                node_id for node_id, node_info in self.monitored_nodes.items()
-                if node_info.status == NodeStatus.HEALTHY
-            ]
-    
+            return [nid for nid, n in self.monitored_nodes.items() if n.status == NodeStatus.HEALTHY]
+
     def get_failed_nodes(self) -> List[str]:
-        """Get list of failed node IDs"""
         with self.node_lock:
-            return [
-                node_id for node_id, node_info in self.monitored_nodes.items()
-                if node_info.status == NodeStatus.FAILED
-            ]
-    
+            return [nid for nid, n in self.monitored_nodes.items() if n.status == NodeStatus.FAILED]
+
     def start(self) -> None:
-        """Start recovery manager background processing"""
         if self.monitor_thread is None or not self.monitor_thread.is_alive():
             self.should_exit = False
-            
-            # Start monitoring thread
-            self.monitor_thread = threading.Thread(
-                target=self._health_monitor,
-                daemon=True,
-                name=f"recovery-monitor-{self.manager_id}"
-            )
+
+            self.monitor_thread = threading.Thread(target=self._health_monitor, daemon=True)
             self.monitor_thread.start()
-            
-            # Start recovery thread
-            self.recovery_thread = threading.Thread(
-                target=self._recovery_processor,
-                daemon=True,
-                name=f"recovery-processor-{self.manager_id}"
-            )
+
+            self.recovery_thread = threading.Thread(target=self._recovery_processor, daemon=True)
             self.recovery_thread.start()
-            
+
             LOG.info(f"RecoveryManager {self.manager_id} started")
-    
+
     def stop(self) -> None:
-        """Stop recovery manager processing"""
         self.should_exit = True
-        
+
         if self.monitor_thread and self.monitor_thread.is_alive():
-            self.monitor_thread.join(timeout=5.0)
-        
+            self.monitor_thread.join(timeout=5)
+
         if self.recovery_thread and self.recovery_thread.is_alive():
-            self.recovery_thread.join(timeout=5.0)
-        
+            self.recovery_thread.join(timeout=5)
+
         LOG.info(f"RecoveryManager {self.manager_id} stopped")
-    
-    def _schedule_recovery(self, node_info: NodeInfo) -> None:
-        """Schedule recovery for failed node"""
-        recovery_actions = self.recovery_strategy.create_recovery_plan(node_info)
-        
+
+    def _schedule_recovery(self, node: NodeInfo) -> None:
+        actions = self.recovery_strategy.create_recovery_plan(node)
+
         with self.recovery_lock:
-            for action in recovery_actions:
-                action.vector_clock = self.vector_clock.clock.copy()
-                self.recovery_queue.append(action)
-            
-            # Sort by priority (lower number = higher priority)
-            self.recovery_queue.sort(key=lambda a: a.priority)
-        
-        LOG.info(f"Scheduled {len(recovery_actions)} recovery actions for node {node_info.node_id}")
-    
+            for a in actions:
+                a.vector_clock = self.vector_clock.clock.copy()
+                self.recovery_queue.append(a)
+            self.recovery_queue.sort(key=lambda x: x.priority)
+
+        LOG.info(f"Scheduled {len(actions)} actions for node {node.node_id}")
+
     def _health_monitor(self) -> None:
-        """Background health monitoring thread"""
-        LOG.info(f"Health monitor started for manager {self.manager_id}")
-        
+        LOG.info(f"Health monitor for {self.manager_id} started")
         while not self.should_exit:
             try:
-                current_time = time.time()
-                
+                now = time.time()
                 with self.node_lock:
-                    for node_id, node_info in self.monitored_nodes.items():
-                        if node_info.status == NodeStatus.HEALTHY:
-                            # Check for heartbeat timeout
-                            time_since_heartbeat = current_time - node_info.last_heartbeat
-                            
-                            if time_since_heartbeat > self.heartbeat_timeout:
-                                # Mark as suspected first
-                                if time_since_heartbeat > self.heartbeat_timeout * 1.5:
-                                    node_info.status = NodeStatus.FAILED
-                                    node_info.failure_count += 1
-                                    self.vector_clock.tick()
-                                    
-                                    LOG.warning(f"Node {node_id} failed (heartbeat timeout)")
-                                    
-                                    # Schedule recovery
-                                    if self.recovery_strategy.should_recover(node_info):
-                                        self._schedule_recovery(node_info)
-                                
-                                elif node_info.status == NodeStatus.HEALTHY:
-                                    node_info.status = NodeStatus.SUSPECTED
-                                    LOG.debug(f"Node {node_id} suspected (heartbeat delay)")
-                
-                time.sleep(5.0)  # Check every 5 seconds
-                
+                    for node_id, node in self.monitored_nodes.items():
+                        if node.status == NodeStatus.HEALTHY:
+                            gap = now - node.last_heartbeat
+                            if gap > self.heartbeat_timeout * 1.5:
+                                node.status = NodeStatus.FAILED
+                                node.failure_count += 1
+                                self.vector_clock.tick()
+                                LOG.warning(f"Node {node_id} failed due to timeout")
+                                if self.recovery_strategy.should_recover(node):
+                                    self._schedule_recovery(node)
+                            elif gap > self.heartbeat_timeout:
+                                node.status = NodeStatus.SUSPECTED
+                                LOG.debug(f"Node {node_id} suspected")
+                time.sleep(5)
             except Exception as e:
-                LOG.error(f"Error in health monitor: {e}")
-                time.sleep(1.0)
-        
-        LOG.info(f"Health monitor stopped for manager {self.manager_id}")
-    
+                LOG.error(f"Monitor error: {e}")
+                time.sleep(1)
+        LOG.info(f"Health monitor for {self.manager_id} stopped")
+
     def _recovery_processor(self) -> None:
-        """Background recovery processing thread"""
-        LOG.info(f"Recovery processor started for manager {self.manager_id}")
-        
+        LOG.info(f"Recovery processor for {self.manager_id} started")
         while not self.should_exit:
             try:
                 with self.recovery_lock:
                     if not self.recovery_queue:
-                        time.sleep(1.0)
+                        time.sleep(1)
                         continue
-                    
-                    # Get highest priority action
                     action = self.recovery_queue.pop(0)
-                
-                # Execute recovery action
                 self._execute_recovery_action(action)
-                
-                time.sleep(0.5)  # Brief pause between actions
-                
+                time.sleep(0.5)
             except Exception as e:
-                LOG.error(f"Error in recovery processor: {e}")
-                time.sleep(1.0)
-        
-        LOG.info(f"Recovery processor stopped for manager {self.manager_id}")
-    
+                LOG.error(f"Processor error: {e}")
+                time.sleep(1)
+        LOG.info(f"Recovery processor for {self.manager_id} stopped")
+
     def _execute_recovery_action(self, action: RecoveryAction) -> bool:
-        """
-        Execute recovery action
-        
-        Args:
-            action: Recovery action to execute
-            
-        Returns:
-            True if action executed successfully
-        """
         self.vector_clock.tick()
-        
-        LOG.info(f"Executing recovery action: {action.action_type} for node {action.target_node}")
-        
-        # Update node status
+        LOG.info(f"Executing: {action.action_type} for {action.target_node}")
         with self.node_lock:
-            node_info = self.monitored_nodes.get(action.target_node)
-            if node_info:
-                node_info.status = NodeStatus.RECOVERING
-                node_info.recovery_attempts += 1
-        
-        # Simulate recovery action execution
+            node = self.monitored_nodes.get(action.target_node)
+            if node:
+                node.status = NodeStatus.RECOVERING
+                node.recovery_attempts += 1
+
         if action.action_type == "restart_service":
             return self._restart_node_service(action.target_node)
         elif action.action_type == "verify_health":
             return self._verify_node_health(action.target_node)
         elif action.action_type == "emergency_failover":
             return self._emergency_failover(action.target_node)
-        
+
         return False
-    
+
     def _restart_node_service(self, node_id: str) -> bool:
-        """Simulate restarting node service"""
-        LOG.info(f"Restarting service for node {node_id}")
-        time.sleep(0.1)  # Simulate restart time
-        return True
-    
-    def _verify_node_health(self, node_id: str) -> bool:
-        """Simulate verifying node health"""
-        LOG.info(f"Verifying health for node {node_id}")
-        time.sleep(0.1)  # Simulate health check
-        
-        # Mark node as healthy if verification passes
-        with self.node_lock:
-            node_info = self.monitored_nodes.get(node_id)
-            if node_info:
-                node_info.status = NodeStatus.HEALTHY
-                node_info.last_heartbeat = time.time()
-        
-        return True
-    
-    def _emergency_failover(self, node_id: str) -> bool:
-        """Simulate emergency failover"""
-        LOG.warning(f"Performing emergency failover for node {node_id}")
-        time.sleep(0.1)  # Simulate failover time
+        LOG.info(f"Restarting node {node_id}")
+        time.sleep(0.1)
         return True
 
-# Demo and testing functions
+    def _verify_node_health(self, node_id: str) -> bool:
+        LOG.info(f"Verifying node {node_id}")
+        time.sleep(0.1)
+        with self.node_lock:
+            node = self.monitored_nodes.get(node_id)
+            if node:
+                node.status = NodeStatus.HEALTHY
+                node.last_heartbeat = time.time()
+        return True
+
+    def _emergency_failover(self, node_id: str) -> bool:
+        LOG.warning(f"Emergency failover for node {node_id}")
+        time.sleep(0.1)
+        return True
+
+# Demo runner
 def demo_recovery_system():
-    """Demonstrate RecoverySystem functionality"""
     print("\n=== RecoverySystem Demo ===")
-    
-    # Create recovery manager
+
     recovery = SimpleRecoveryManager("demo_recovery")
-    print(f"✅ Created recovery manager: {recovery.manager_id}")
-    
-    # Register nodes for monitoring
-    node1_id = "executor_1"
-    node2_id = "executor_2" 
-    node3_id = "datastore_1"
-    
-    recovery.register_node(node1_id, "127.0.0.1", 8001)
-    recovery.register_node(node2_id, "127.0.0.1", 8002)
-    recovery.register_node(node3_id, "127.0.0.1", 9001)
-    
-    print(f"✅ Registered {len(recovery.monitored_nodes)} nodes for monitoring")
-    
-    # Start recovery manager
+    print(f"✅ Created manager: {recovery.manager_id}")
+
+    recovery.register_node("executor_1", "127.0.0.1", 8001)
+    recovery.register_node("executor_2", "127.0.0.1", 8002)
+    recovery.register_node("datastore_1", "127.0.0.1", 9001)
+
+    print(f"✅ Nodes registered: {len(recovery.monitored_nodes)}")
+
     recovery.start()
     print("✅ Recovery manager started")
-    
-    # Process heartbeats
-    recovery.process_heartbeat(node1_id)
-    recovery.process_heartbeat(node2_id)
-    recovery.process_heartbeat(node3_id)
-    print("✅ Processed heartbeats")
-    
-    # Check node status
-    print(f"✅ Healthy nodes: {recovery.get_healthy_nodes()}")
-    print(f"✅ Failed nodes: {recovery.get_failed_nodes()}")
-    
-    # Simulate node failure
-    recovery.detect_node_failure(node2_id, "network_timeout")
-    print(f"✅ Node {node2_id} marked as failed")
-    
-    # Test emergency mode
+
+    recovery.process_heartbeat("executor_1")
+    recovery.process_heartbeat("executor_2")
+    recovery.process_heartbeat("datastore_1")
+
+    print(f"✅ Healthy: {recovery.get_healthy_nodes()}")
+    print(f"✅ Failed: {recovery.get_failed_nodes()}")
+
+    recovery.detect_node_failure("executor_2", "network_timeout")
+    print("✅ Node executor_2 failed")
+
     recovery.set_emergency_mode("fire", "critical")
     print("✅ Emergency mode activated")
-    
-    # Simulate emergency failure
-    recovery.detect_node_failure(node3_id, "emergency_shutdown")
-    print(f"✅ Emergency failure detected for {node3_id}")
-    
-    # Wait for recovery actions
+
+    recovery.detect_node_failure("datastore_1", "emergency_shutdown")
+    print("✅ Emergency failure detected")
+
     time.sleep(0.5)
-    print("✅ Recovery actions processed")
-    
-    # Clear emergency
+    print("✅ Recovery actions done")
+
     recovery.clear_emergency_mode()
     print("✅ Emergency mode cleared")
-    
-    # Stop recovery manager
+
     recovery.stop()
     print("✅ Recovery manager stopped")
-    
+
     return True
 
 if __name__ == "__main__":
-    # Configure logging
     logging.basicConfig(level=logging.INFO)
-    
-    # Run demo
     demo_recovery_system()
