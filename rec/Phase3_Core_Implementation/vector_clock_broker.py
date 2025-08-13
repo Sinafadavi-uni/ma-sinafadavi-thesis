@@ -27,20 +27,22 @@ from queue import PriorityQueue, Empty
 from collections import defaultdict
 
 # Import Phase 1 foundation
-import sys
-import os
-phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
-sys.path.insert(0, phase1_path)
-
 from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
 from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
 from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager, FCFSConsistencyPolicy
 
 # Import Phase 2 infrastructure
-phase2_path = os.path.join(os.path.dirname(__file__), '..', 'Phase2_Node_Infrastructure')
-sys.path.insert(0, phase2_path)
+from rec.Phase2_Node_Infrastructure.extended_executorbroker import (
+    ExtendedExecutorBroker as ExecutorBroker,
+    JobInfo
+)
+# Alternative import for ExecutorInfo if needed
+try:
+    from rec.Phase2_Node_Infrastructure.executorbroker import ExecutorInfo
+except ImportError:
+    # Fallback if original executorbroker doesn't exist
+    ExecutorInfo = None
 
-from rec.Phase2_Node_Infrastructure.executorbroker import ExecutorBroker, JobInfo, ExecutorInfo
 
 LOG = logging.getLogger(__name__)
 
@@ -62,8 +64,15 @@ class DistributedJobCoordination:
     assigned_executor: Optional[str] = None
 
 class VectorClockBroker(ExecutorBroker):
-    def __init__(self, broker_id: str = None):
-        super().__init__(broker_id)
+    def __init__(self, broker_id: str = None, replication_policy_manager=None):
+        # pass the replication policy manager down to the extended broker
+        super().__init__(broker_id, replication_policy_manager=replication_policy_manager)
+        
+        # Initialize vector clock and consistency management
+        self.vector_clock = VectorClock(self.broker_id)
+        self.consistency_manager = CausalConsistencyManager(self.broker_id)
+        
+        # Coordination state
         self.coordination_state = BrokerCoordinationState.INITIALIZING
         self.coordination_lock = threading.RLock()
         self.peer_brokers: Dict[str, 'VectorClockBroker'] = {}
@@ -81,16 +90,25 @@ class VectorClockBroker(ExecutorBroker):
         self.peer_brokers[peer_id] = peer_broker
         LOG.info(f"Registered peer broker: {peer_id}")
 
+
     def submit_distributed_job(self, job_info: JobInfo, preferred_broker: str = None) -> UUID:
         self.vector_clock.tick()
         self.global_fcfs_counter += 1
         fcfs_timestamp = time.time()
+        
+        # Handle emergency context if available in job data
+        emergency_context = None
+        if hasattr(job_info, 'emergency_context'):
+            emergency_context = job_info.emergency_context
+        elif 'emergency_context' in job_info.data:
+            emergency_context = job_info.data['emergency_context']
+        
         job_coordination = DistributedJobCoordination(
-            job_id=job_info.job_id,
+            job_id=UUID(job_info.job_id) if isinstance(job_info.job_id, str) else job_info.job_id,
             originating_broker=self.broker_id,
             vector_clock_snapshot=self.vector_clock.clock.copy(),
             fcfs_timestamp=fcfs_timestamp,
-            emergency_priority=self._get_emergency_priority(job_info.emergency_context)
+            emergency_priority=self._get_emergency_priority(emergency_context)
         )
         with self.coordination_lock:
             self.distributed_jobs[job_info.job_id] = job_coordination
@@ -186,8 +204,7 @@ class VectorClockBroker(ExecutorBroker):
         # Create basic status instead of calling non-existent get_status
         base_status = {
             "broker_id": self.broker_id,
-            "executor_count": self.get_executor_count(),
-            "emergency_mode": self.current_emergency is not None,
+            "executor_count": len(self.executors),
             "vector_clock": self.vector_clock.clock.copy()
         }
         
@@ -203,7 +220,22 @@ class VectorClockBroker(ExecutorBroker):
         }
 
     def start(self) -> None:
+        # The parent class (ExtendedExecutorBroker) expects 'peer_brokers' to be a list
+        # We have peer_brokers as a dict, so we need to provide the list to the parent
+        # Simple approach: temporarily store our dict and set parent's list
+        our_peer_dict = self.peer_brokers
+        parent_peer_list = list(our_peer_dict.values())
+        
+        # Set the parent's expected attribute
+        # Since we inherit, self has the parent's attributes
+        object.__setattr__(self, 'peer_brokers', parent_peer_list)
+
+        # Call parent start
         super().start()
+        
+        # Restore our dict-based peer_brokers
+        self.peer_brokers = our_peer_dict
+
         if self.sync_thread is None or not self.sync_thread.is_alive():
             self.sync_thread = threading.Thread(
                 target=self._coordination_sync_worker,
@@ -211,6 +243,7 @@ class VectorClockBroker(ExecutorBroker):
                 name=f"vc-broker-sync-{self.broker_id}"
             )
             self.sync_thread.start()
+
         self.coordination_state = BrokerCoordinationState.ACTIVE
         LOG.info(f"VectorClockBroker {self.broker_id} started with distributed coordination")
 
@@ -286,9 +319,9 @@ def demo_vector_clock_broker():
     broker2.start()
     print("✅ Vector clock brokers started")
     
-    # Submit distributed jobs
-    job1 = JobInfo(job_id=uuid4(), data={"task": "distributed_compute"})
-    job2 = JobInfo(job_id=uuid4(), data={"task": "data_analysis"})
+    # Submit distributed jobs with proper JobInfo format
+    job1 = JobInfo(job_id=str(uuid4()), data={"task": "distributed_compute"})
+    job2 = JobInfo(job_id=str(uuid4()), data={"task": "data_analysis"})
     
     broker1.submit_distributed_job(job1)
     broker2.submit_distributed_job(job2)

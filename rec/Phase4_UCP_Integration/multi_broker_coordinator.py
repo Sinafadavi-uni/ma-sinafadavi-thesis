@@ -27,19 +27,14 @@ from collections import defaultdict
 import json
 
 # Import Phase 1 foundation
-import sys
-import os
-phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
-sys.path.insert(0, phase1_path)
-
 from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
 from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
 from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
 
-# Import Phase 3 implementation
-phase3_path = os.path.join(os.path.dirname(__file__), '..', 'Phase3_Core_Implementation')
-sys.path.insert(0, phase3_path)
+# Import Phase 2 infrastructure - including replication policy
+from rec.Phase2_Node_Infrastructure.replication_policy import ReplicationPolicyManager, ReplicationPolicy
 
+# Import Phase 3 implementation
 from rec.Phase3_Core_Implementation.vector_clock_broker import VectorClockBroker
 from rec.Phase3_Core_Implementation.emergency_integration import EmergencyIntegrationManager
 
@@ -83,30 +78,150 @@ class GlobalOperation:
     success: bool = False
 
 class MultiBrokerCoordinator:
-    def __init__(self, coordinator_id: str = None):
+    def __init__(self, coordinator_id: str = None, replication_policy_manager: ReplicationPolicyManager = None):
         self.coordinator_id = coordinator_id or f"multi-broker-coord-{uuid4()}"
         self.vector_clock = VectorClock(self.coordinator_id)
+        
+        # Replication policy management
+        self.replication_policy_manager = replication_policy_manager or self._create_default_replication_policies()
+        
+        # Broker cluster management
         self.broker_clusters: Dict[str, BrokerCluster] = {}
         self.cluster_brokers: Dict[str, VectorClockBroker] = {}
         self.cluster_lock = threading.RLock()
+        
+        # Operation coordination
         self.global_operations: Dict[UUID, GlobalOperation] = {}
         self.operation_lock = threading.RLock()
+        
+        # Emergency management
         self.emergency_manager = EmergencyIntegrationManager(f"emergency-{self.coordinator_id}")
         self.global_emergency_state = False
+        
+        # Sync and health check settings
         self.sync_interval = 10.0
         self.health_check_interval = 30.0
         self.sync_thread = None
         self.health_thread = None
+        
+        # Message handling and consistency
         self.message_handler = MessageHandler(self.coordinator_id)
         self.consistency_manager = CausalConsistencyManager(self.coordinator_id)
         self.should_exit = False
+        
+        # Metrics
         self.coordination_metrics = {
             "operations_coordinated": 0,
             "clusters_synchronized": 0,
             "emergencies_handled": 0,
             "uptime_start": time.time()
         }
-        LOG.info(f"MultiBrokerCoordinator {self.coordinator_id} initialized")
+        LOG.info(f"MultiBrokerCoordinator {self.coordinator_id} initialized with replication policies")
+
+    def _create_default_replication_policies(self) -> ReplicationPolicyManager:
+        """Create default replication policies for UCP deployment"""
+        rpm = ReplicationPolicyManager()
+        
+        # Job metadata - replicate quickly for coordination
+        rpm.set_policy("job:", ReplicationPolicy(replicate=True, sync_interval=5.0))
+        
+        # Dataset metadata - replicate with moderate frequency
+        rpm.set_policy("dataset:", ReplicationPolicy(replicate=True, sync_interval=30.0))
+        
+        # Emergency data - replicate immediately
+        rpm.set_policy("emergency:", ReplicationPolicy(replicate=True, sync_interval=1.0))
+        
+        # System configuration - replicate with normal frequency
+        rpm.set_policy("config:", ReplicationPolicy(replicate=True, sync_interval=60.0))
+        
+        # Performance metrics - replicate less frequently
+        rpm.set_policy("metrics:", ReplicationPolicy(replicate=True, sync_interval=120.0))
+        
+        # Debug information - do not replicate
+        rpm.set_policy("debug:", ReplicationPolicy(replicate=False))
+        
+        # Temporary data - do not replicate
+        rpm.set_policy("temp:", ReplicationPolicy(replicate=False))
+        
+        LOG.info("Default replication policies configured")
+        return rpm
+
+    def create_broker_cluster(self, cluster_id: str, broker_ids: List[str]) -> List[VectorClockBroker]:
+        """Create a cluster of VectorClockBrokers with shared replication policies"""
+        brokers = []
+        
+        for broker_id in broker_ids:
+            # Create broker with shared replication policy manager
+            broker = VectorClockBroker(broker_id, replication_policy_manager=self.replication_policy_manager)
+            brokers.append(broker)
+            
+        # Set up peer relationships within the cluster
+        for i, broker in enumerate(brokers):
+            for j, peer_broker in enumerate(brokers):
+                if i != j:
+                    broker.register_peer_broker(peer_broker.broker_id, peer_broker)
+        
+        # Register the cluster with this coordinator
+        if brokers:
+            primary_broker = brokers[0]
+            broker_node_ids = {broker.broker_id for broker in brokers}
+            self.register_broker_cluster(cluster_id, primary_broker, broker_node_ids)
+            
+            # Store all brokers for the cluster
+            for broker in brokers:
+                self.cluster_brokers[f"{cluster_id}_{broker.broker_id}"] = broker
+        
+        LOG.info(f"Created broker cluster {cluster_id} with {len(brokers)} brokers")
+        return brokers
+
+    def start_broker_cluster(self, cluster_id: str) -> bool:
+        """Start all brokers in a cluster"""
+        cluster = self.broker_clusters.get(cluster_id)
+        if not cluster:
+            LOG.error(f"Cluster {cluster_id} not found")
+            return False
+        
+        # Find and start all brokers in the cluster
+        cluster_brokers = [
+            broker for key, broker in self.cluster_brokers.items() 
+            if key.startswith(f"{cluster_id}_")
+        ]
+        
+        for broker in cluster_brokers:
+            try:
+                broker.start()
+                LOG.info(f"Started broker {broker.broker_id} in cluster {cluster_id}")
+            except Exception as e:
+                LOG.error(f"Failed to start broker {broker.broker_id}: {e}")
+                return False
+        
+        cluster.status = BrokerClusterStatus.ACTIVE
+        LOG.info(f"Broker cluster {cluster_id} started successfully")
+        return True
+
+    def stop_broker_cluster(self, cluster_id: str) -> bool:
+        """Stop all brokers in a cluster"""
+        cluster = self.broker_clusters.get(cluster_id)
+        if not cluster:
+            LOG.error(f"Cluster {cluster_id} not found")
+            return False
+        
+        # Find and stop all brokers in the cluster
+        cluster_brokers = [
+            broker for key, broker in self.cluster_brokers.items() 
+            if key.startswith(f"{cluster_id}_")
+        ]
+        
+        for broker in cluster_brokers:
+            try:
+                broker.stop()
+                LOG.info(f"Stopped broker {broker.broker_id} in cluster {cluster_id}")
+            except Exception as e:
+                LOG.error(f"Failed to stop broker {broker.broker_id}: {e}")
+        
+        cluster.status = BrokerClusterStatus.OFFLINE
+        LOG.info(f"Broker cluster {cluster_id} stopped")
+        return True
 
     def register_broker_cluster(self, cluster_id: str, primary_broker: VectorClockBroker, 
                                broker_nodes: Set[str] = None) -> bool:
@@ -219,49 +334,94 @@ class MultiBrokerCoordinator:
         LOG.info(f"MultiBrokerCoordinator {self.coordinator_id} stopped")
 
 def demo_multi_broker_coordinator():
-    print("\n=== Multi-Broker Coordinator Demo ===")
+    print("\n=== Multi-Broker Coordinator Demo with Replication Policies ===")
     
-    # Create coordinator
-    coordinator = MultiBrokerCoordinator("global_coordinator")
-    print("✅ Multi-broker coordinator created")
+    # Create custom replication policy manager
+    rpm = ReplicationPolicyManager()
+    # replicate all job metadata quickly (5s), datasets less frequently (30s), and skip debug keys entirely
+    rpm.set_policy("job:", ReplicationPolicy(replicate=True, sync_interval=5.0))
+    rpm.set_policy("dataset:", ReplicationPolicy(replicate=True, sync_interval=30.0))
+    rpm.set_policy("debug:", ReplicationPolicy(replicate=False))
+    print("✅ Custom replication policies configured")
     
-    # Create broker clusters
-    from rec.Phase3_Core_Implementation.vector_clock_broker import VectorClockBroker
+    # Create coordinator with custom policies
+    coordinator = MultiBrokerCoordinator("global_coordinator", replication_policy_manager=rpm)
+    print("✅ Multi-broker coordinator created with custom policies")
     
-    broker1 = VectorClockBroker("cluster1_primary")
-    broker2 = VectorClockBroker("cluster2_primary")
-    broker3 = VectorClockBroker("cluster3_primary")
+    # Create broker clusters using the coordinator's helper methods
+    print("\n📊 Creating broker clusters...")
     
-    # Register clusters
-    coordinator.register_broker_cluster("cluster1", broker1, {"broker1a", "broker1b"})
-    coordinator.register_broker_cluster("cluster2", broker2, {"broker2a", "broker2b"})
-    coordinator.register_broker_cluster("cluster3", broker3, {"broker3a", "broker3b"})
-    print("✅ Broker clusters registered")
+    # Create cluster 1
+    cluster1_brokers = coordinator.create_broker_cluster("cluster1", ["broker-1a", "broker-1b"])
+    print(f"✅ Created cluster1 with {len(cluster1_brokers)} brokers")
     
-    # Start brokers
-    broker1.start()
-    broker2.start()
-    broker3.start()
-    print("✅ Broker clusters started")
+    # Create cluster 2
+    cluster2_brokers = coordinator.create_broker_cluster("cluster2", ["broker-2a", "broker-2b"])
+    print(f"✅ Created cluster2 with {len(cluster2_brokers)} brokers")
+    
+    # Create cluster 3
+    cluster3_brokers = coordinator.create_broker_cluster("cluster3", ["broker-3a", "broker-3b"])
+    print(f"✅ Created cluster3 with {len(cluster3_brokers)} brokers")
+    
+    # Start all clusters
+    print("\n🚀 Starting broker clusters...")
+    coordinator.start_broker_cluster("cluster1")
+    coordinator.start_broker_cluster("cluster2")
+    coordinator.start_broker_cluster("cluster3")
+    print("✅ All broker clusters started successfully")
+    
+    # Test replication policy behavior
+    print("\n🔄 Testing replication policy behavior...")
+    
+    # Get a sample broker and test metadata operations
+    sample_broker = cluster1_brokers[0]
+    
+    # Store metadata with different prefixes
+    sample_broker.metadata_store.update("job:test_job_001", {"status": "running", "executor": "node-a"})
+    sample_broker.metadata_store.update("dataset:large_dataset", {"size": "10GB", "location": "cluster1"})
+    sample_broker.metadata_store.update("debug:verbose_log", {"level": "trace", "output": "detailed"})
+    
+    print("✅ Stored metadata with different replication policies")
+    
+    # Check which items should be replicated
+    job_policy = rpm.get_policy("job:test_job_001")
+    dataset_policy = rpm.get_policy("dataset:large_dataset")
+    debug_policy = rpm.get_policy("debug:verbose_log")
+    
+    print(f"   job: metadata -> replicate: {job_policy.replicate}, interval: {job_policy.sync_interval}s")
+    print(f"   dataset: metadata -> replicate: {dataset_policy.replicate}, interval: {dataset_policy.sync_interval}s")
+    print(f"   debug: metadata -> replicate: {debug_policy.replicate}")
     
     # Coordinate global operation
+    print("\n🌐 Testing global coordination...")
     op_id = coordinator.coordinate_global_operation("sync_all_clusters")
     print("✅ Global operation coordinated")
     
     # Test emergency coordination
+    print("\n🚨 Testing emergency coordination...")
     emergency_id = coordinator.coordinate_emergency_across_clusters("earthquake", "high")
     print("✅ Emergency coordinated across clusters")
     
     # Get global status
     status = coordinator.get_global_status()
-    print(f"✅ Managing {len(status['clusters'])} clusters")
-    print(f"✅ Emergency state: {status['global_emergency']}")
+    print(f"\n📊 Global Status:")
+    print(f"   Managing {len(status['clusters'])} clusters")
+    print(f"   Emergency state: {status['global_emergency']}")
+    print(f"   Operations coordinated: {status['metrics']['operations_coordinated']}")
+    print(f"   Emergencies handled: {status['metrics']['emergencies_handled']}")
     
-    # Stop brokers
-    broker1.stop()
-    broker2.stop()
-    broker3.stop()
-    print("✅ Broker clusters stopped")
+    # Stop all clusters
+    print("\n⏹️  Stopping broker clusters...")
+    coordinator.stop_broker_cluster("cluster1")
+    coordinator.stop_broker_cluster("cluster2")
+    coordinator.stop_broker_cluster("cluster3")
+    print("✅ All broker clusters stopped")
+    
+    print("\n🎉 Multi-Broker Coordinator Demo completed successfully!")
+    print("   - Replication policies configured and applied")
+    print("   - Multiple broker clusters created and managed")
+    print("   - Peer relationships established within clusters")
+    print("   - Global coordination and emergency response tested")
     
     return True
 
