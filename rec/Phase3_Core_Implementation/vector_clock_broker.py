@@ -19,7 +19,6 @@ to ensure causal consistency in distributed job execution.
 import time
 import threading
 import logging
-from typing import Dict, Optional, List, Set, Any, Tuple
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
@@ -34,7 +33,7 @@ sys.path.insert(0, phase1_path)
 
 # import vector_clock
 # import causal_message
-import causal_consistency
+# import causal_consistency
 
 from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
 from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
@@ -44,7 +43,7 @@ from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManag
 phase2_path = os.path.join(os.path.dirname(__file__), '..', 'Phase2_Node_Infrastructure')
 sys.path.insert(0, phase2_path)
 
-from executorbroker import ExecutorBroker, JobInfo, ExecutorInfo
+from rec.Phase2_Node_Infrastructure.executorbroker import ExecutorBroker, JobInfo, ExecutorInfo
 
 LOG = logging.getLogger(__name__)
 
@@ -52,12 +51,12 @@ LOG = logging.getLogger(__name__)
 class BrokerMetadata:
     """Complete broker metadata for synchronization"""
     broker_id: str
-    vector_clock: Dict[str, int]
-    job_registry: Dict[UUID, DistributedJobCoordination]
-    executor_registry: Dict[UUID, ExecutorInfo]
-    datastore_locations: Dict[str, List[str]]  # data_key -> [datastore_ids]
-    pending_jobs: List[UUID]
-    completed_jobs: Set[UUID]
+    vector_clock: dict = field(default_factory=dict)
+    job_registry: dict = field(default_factory=dict)
+    executor_registry: dict = field(default_factory=dict)
+    datastore_locations: dict = field(default_factory=dict)  # data_key -> [datastore_ids]
+    pending_jobs: list = field(default_factory=list)
+    completed_jobs: set = field(default_factory=set)
     last_sync_time: float = field(default_factory=time.time)
 
 class BrokerCoordinationState(Enum):
@@ -73,11 +72,11 @@ class DistributedJobCoordination:
     """Coordination information for distributed job"""
     job_id: UUID
     originating_broker: str
-    vector_clock_snapshot: Dict[str, int]
     fcfs_timestamp: float
-    emergency_priority: Optional[int] = None
+    vector_clock_snapshot: dict = field(default_factory=dict)
+    emergency_priority: int = None
     coordination_state: str = "pending"
-    assigned_executor: Optional[str] = None
+    assigned_executor: str = None
     
 class VectorClockBroker(ExecutorBroker):
     """
@@ -100,12 +99,12 @@ class VectorClockBroker(ExecutorBroker):
         self.coordination_lock = threading.RLock()
         
         # Distributed coordination
-        self.peer_brokers: Dict[str, 'VectorClockBroker'] = {}
-        self.distributed_jobs: Dict[UUID, DistributedJobCoordination] = {}
+        self.peer_brokers = {}
+        self.distributed_jobs = {}
         self.global_fcfs_counter = 0
         
         # Cross-broker synchronization
-        self.broker_vector_clocks: Dict[str, Dict[str, int]] = {}
+        self.broker_vector_clocks = {}
         self.sync_interval = 3.0  # Sync every 3 seconds
         self.sync_thread = None
         
@@ -116,7 +115,7 @@ class VectorClockBroker(ExecutorBroker):
         self.coordination_state = BrokerCoordinationState.ACTIVE
         LOG.info(f"VectorClockBroker {self.broker_id} initialized with distributed coordination")
     
-    def register_peer_broker(self, peer_id: str, peer_broker: 'VectorClockBroker') -> None:
+    def register_peer_broker(self, peer_id, peer_broker):
         """
         Register peer broker for distributed coordination
         
@@ -127,7 +126,7 @@ class VectorClockBroker(ExecutorBroker):
         self.peer_brokers[peer_id] = peer_broker
         LOG.info(f"Registered peer broker: {peer_id}")
     
-    def submit_distributed_job(self, job_info: JobInfo, preferred_broker: str = None) -> UUID:
+    def submit_distributed_job(self, job_info, preferred_broker=None):
         """
         Submit job with distributed coordination using vector clocks
         
@@ -179,7 +178,7 @@ class VectorClockBroker(ExecutorBroker):
         LOG.info(f"Distributed job {job_info.job_id} coordinated: {job_coordination.coordination_state}")
         return result
     
-    def execute_delegated_job(self, job_info: JobInfo, originating_broker: str) -> UUID:
+    def execute_delegated_job(self, job_info, originating_broker):
         """
         Execute job delegated from another broker
         
@@ -201,7 +200,7 @@ class VectorClockBroker(ExecutorBroker):
         LOG.info(f"Executed delegated job {job_info.job_id} from broker {originating_broker}")
         return result
     
-    def sync_vector_clock(self, peer_clock: Dict[str, int], peer_broker_id: str) -> None:
+    def sync_vector_clock(self, peer_clock, peer_broker_id):
         """
         Synchronize vector clock with peer broker
         
@@ -216,7 +215,7 @@ class VectorClockBroker(ExecutorBroker):
         
         LOG.debug(f"Vector clock synchronized with broker {peer_broker_id}")
     
-    def ensure_causal_order(self, operation: Dict[str, Any]) -> bool:
+    def ensure_causal_order(self, operation):
         """
         Ensure causal ordering for distributed operations
         
@@ -242,8 +241,8 @@ class VectorClockBroker(ExecutorBroker):
         
         return self.consistency_manager.ensure_consistency(consistency_op)
     
-    def coordinate_emergency_response(self, emergency_context: EmergencyContext, 
-                                    affected_regions: List[str] = None) -> Dict[str, Any]:
+    def coordinate_emergency_response(self, emergency_context, 
+                                    affected_regions=None):
         """
         Coordinate emergency response across distributed brokers
         
@@ -298,7 +297,7 @@ class VectorClockBroker(ExecutorBroker):
             "vector_clock": self.vector_clock.clock.copy()
         }
     
-    def get_distributed_status(self) -> Dict[str, Any]:
+    def get_distributed_status(self):
         """Get comprehensive distributed broker status"""
         with self.coordination_lock:
             distributed_job_states = {}
@@ -323,7 +322,7 @@ class VectorClockBroker(ExecutorBroker):
             "global_fcfs_counter": self.global_fcfs_counter
         }
     
-    def start(self) -> None:
+    def start(self):
         """Start vector clock broker with coordination"""
         super().start()
         
@@ -339,7 +338,7 @@ class VectorClockBroker(ExecutorBroker):
         self.coordination_state = BrokerCoordinationState.ACTIVE
         LOG.info(f"VectorClockBroker {self.broker_id} started with distributed coordination")
     
-    def stop(self) -> None:
+    def stop(self):
         """Stop vector clock broker"""
         self.coordination_state = BrokerCoordinationState.FAILED
         
@@ -349,7 +348,7 @@ class VectorClockBroker(ExecutorBroker):
         super().stop()
         LOG.info(f"VectorClockBroker {self.broker_id} stopped")
     
-    def _get_emergency_priority(self, emergency_context: EmergencyContext) -> Optional[int]:
+    def _get_emergency_priority(self, emergency_context):
         """Get numeric priority for emergency context"""
         if not emergency_context:
             return None
@@ -403,7 +402,7 @@ class VectorClockBroker(ExecutorBroker):
         LOG.debug(f"Job {job_coordination.job_id} assigned to broker {assigned_broker} via FCFS")
         return assigned_broker
     
-    def _coordination_sync_worker(self) -> None:
+    def _coordination_sync_worker(self):
         """Enhanced background worker with full metadata sync"""
         LOG.info(f"Enhanced coordination sync worker started for broker {self.broker_id}")
         
@@ -439,7 +438,7 @@ class VectorClockBroker(ExecutorBroker):
         
         LOG.info(f"Coordination sync worker stopped for broker {self.broker_id}")
 
-    def get_metadata_snapshot(self) -> BrokerMetadata:
+    def get_metadata_snapshot(self):
         """Create a complete metadata snapshot for synchronization"""
         with self.coordination_lock:
             return BrokerMetadata(
@@ -453,7 +452,7 @@ class VectorClockBroker(ExecutorBroker):
                 last_sync_time=time.time()
             )
 
-    def sync_metadata_with_peer(self, peer_metadata: BrokerMetadata) -> None:
+    def sync_metadata_with_peer(self, peer_metadata):
         """Synchronize complete metadata with peer broker"""
         with self.coordination_lock:
             # 1. Sync vector clocks
@@ -493,7 +492,7 @@ class VectorClockBroker(ExecutorBroker):
             
             LOG.info(f"Metadata synchronized with broker {peer_metadata.broker_id}")
 
-    def _is_causally_after(self, vc1: Dict[str, int], vc2: Dict[str, int]) -> bool:
+    def _is_causally_after(self, vc1, vc2):
         """Check if vc1 is causally after vc2"""
         for node_id in set(vc1.keys()) | set(vc2.keys()):
             if vc1.get(node_id, 0) < vc2.get(node_id, 0):

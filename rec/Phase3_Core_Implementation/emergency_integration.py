@@ -1,5 +1,18 @@
 """
-File 10: EmergencyIntegration - Emergency Response System Integration
+File 10: EmergencyIntegration # import vector_clock
+# import causal_message
+# import causal_consistency
+
+from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
+from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler  
+from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager, FCFSConsistencyPolicy
+
+# Import Phase 2 infrastructure
+phase2_path = os.path.join(os.path.dirname(__file__), '..', 'Phase2_Node_Infrastructure')
+sys.path.insert(0, phase2_path)
+
+from rec.Phase2_Node_Infrastructure.recovery_system import SimpleRecoveryManager
+from rec.Phase2_Node_Infrastructure.emergency_executor import SimpleEmergencyExecutorsponse System Integration
 Phase 3: Core Implementation
 
 Comprehensive emergency response integration system that coordinates
@@ -20,11 +33,11 @@ into a unified emergency management system for distributed environments.
 import time
 import threading
 import logging
-from typing import Dict, Optional, List, Set, Any, Tuple, Callable
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict
+from typing import Any, Set, Dict, List, Optional
 
 # Import Phase 1 foundation
 import sys
@@ -32,20 +45,16 @@ import os
 phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
 sys.path.insert(0, phase1_path)
 
-# import vector_clock
-# import causal_message
-import causal_consistency
-
 from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
-from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
-from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
+from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler  
+from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager, FCFSConsistencyPolicy
 
 # Import Phase 2 infrastructure
 phase2_path = os.path.join(os.path.dirname(__file__), '..', 'Phase2_Node_Infrastructure')
 sys.path.insert(0, phase2_path)
 
-from recovery_system import SimpleRecoveryManager
-from emergency_executor import SimpleEmergencyExecutor
+from rec.Phase2_Node_Infrastructure.recovery_system import SimpleRecoveryManager
+from rec.Phase2_Node_Infrastructure.emergency_executor import SimpleEmergencyExecutor
 
 LOG = logging.getLogger(__name__)
 
@@ -71,13 +80,13 @@ class EmergencyEvent:
     event_id: UUID
     emergency_type: str
     level: EmergencyLevel
-    location: Optional[str] = None
+    location: str = None
     scope: EmergencyScope = EmergencyScope.LOCAL
     detected_at: float = field(default_factory=time.time)
-    vector_clock_snapshot: Dict[str, int] = field(default_factory=dict)
-    affected_nodes: Set[str] = field(default_factory=set)
-    response_actions: List[str] = field(default_factory=list)
-    resolution_time: Optional[float] = None
+    vector_clock_snapshot: dict = field(default_factory=dict)
+    affected_nodes: set = field(default_factory=set)
+    response_actions: list = field(default_factory=list)
+    resolution_time: float = None
 
 @dataclass
 class EmergencyResponse:
@@ -85,12 +94,12 @@ class EmergencyResponse:
     response_id: UUID
     event_id: UUID
     coordinating_node: str
-    participating_nodes: Set[str] = field(default_factory=set)
+    participating_nodes: set = field(default_factory=set)
     response_strategy: str = "default"
     priority_level: int = 1
-    vector_clock_state: Dict[str, int] = field(default_factory=dict)
+    vector_clock_state: dict = field(default_factory=dict)
     started_at: float = field(default_factory=time.time)
-    completed_at: Optional[float] = None
+    completed_at: float = None
 
 class EmergencyIntegrationManager:
     """
@@ -114,18 +123,18 @@ class EmergencyIntegrationManager:
         
         # Emergency state management
         self.current_state = EmergencyState.NORMAL
-        self.active_emergencies: Dict[UUID, EmergencyEvent] = {}
-        self.emergency_responses: Dict[UUID, EmergencyResponse] = {}
+        self.active_emergencies = {}
+        self.emergency_responses = {}
         self.emergency_lock = threading.RLock()
         
         # Node coordination
-        self.managed_nodes: Dict[str, Any] = {}  # Node ID -> Node instance
-        self.node_capabilities: Dict[str, Set[str]] = {}
-        self.node_emergency_status: Dict[str, EmergencyState] = {}
+        self.managed_nodes = {}  # Node ID -> Node instance
+        self.node_capabilities = {}
+        self.node_emergency_status = {}
         
         # Emergency response coordination
-        self.emergency_protocols: Dict[str, Callable] = {}
-        self.response_strategies: Dict[EmergencyLevel, Dict[str, Any]] = {
+        self.emergency_protocols = {}
+        self.response_strategies = {
             EmergencyLevel.LOW: {"timeout": 300, "resources": "normal"},
             EmergencyLevel.MEDIUM: {"timeout": 180, "resources": "increased"},
             EmergencyLevel.HIGH: {"timeout": 60, "resources": "priority"},
@@ -522,7 +531,7 @@ def demo_emergency_integration():
     print(f"✅ Created emergency manager: {emergency_mgr.manager_id}")
     
     # Create and register managed nodes
-    from emergency_executor import SimpleEmergencyExecutor, ExecutorCapabilities
+    from rec.Phase2_Node_Infrastructure.emergency_executor import SimpleEmergencyExecutor, ExecutorCapabilities
     
     capabilities = ExecutorCapabilities(emergency_capable=True)
     executor1 = SimpleEmergencyExecutor("emergency_exec_1", capabilities)

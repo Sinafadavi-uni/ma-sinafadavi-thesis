@@ -8,12 +8,10 @@ and FCFS consistency implementations.
 This is the absolute foundation that all consistency mechanisms depend on.
 """
 
-
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional
 import logging
 
-# Configure logging
+# Setup simple logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -28,7 +26,7 @@ class BaseConsistencyManager(ABC):
     All consistency managers in the system inherit from this base.
     """
     
-    def __init__(self, node_id: str):
+    def __init__(self, node_id):
         """
         Initialize base consistency manager
         
@@ -40,7 +38,7 @@ class BaseConsistencyManager(ABC):
         logger.info(f"Base consistency manager initialized for node: {node_id}")
     
     @abstractmethod
-    def ensure_consistency(self, operation: Dict[str, Any]) -> bool:
+    def ensure_consistency(self, operation):
         """
         Ensure consistency for a given operation
         
@@ -53,7 +51,7 @@ class BaseConsistencyManager(ABC):
         pass
     
     @abstractmethod
-    def validate_operation(self, operation: Dict[str, Any]) -> bool:
+    def validate_operation(self, operation):
         """
         Validate that an operation is consistent with current state
         
@@ -66,7 +64,7 @@ class BaseConsistencyManager(ABC):
         pass
     
     @abstractmethod
-    def update_state(self, state_update: Dict[str, Any]) -> None:
+    def update_state(self, state_update):
         """
         Update internal consistency state
         
@@ -75,20 +73,20 @@ class BaseConsistencyManager(ABC):
         """
         pass
     
-    def get_node_id(self) -> str:
+    def get_node_id(self):
         """Get the node identifier"""
         return self.node_id
     
-    def is_active(self) -> bool:
+    def is_active(self):
         """Check if consistency manager is active"""
         return self.active
     
-    def activate(self) -> None:
+    def activate(self):
         """Activate the consistency manager"""
         self.active = True
         logger.info(f"Consistency manager activated for node: {self.node_id}")
     
-    def deactivate(self) -> None:
+    def deactivate(self):
         """Deactivate the consistency manager"""
         self.active = False
         logger.info(f"Consistency manager deactivated for node: {self.node_id}")
@@ -102,7 +100,7 @@ class ConsistencyPolicy(ABC):
     or causal ordering policies.
     """
     
-    def __init__(self, policy_name: str):
+    def __init__(self, policy_name):
         """
         Initialize consistency policy
         
@@ -114,7 +112,7 @@ class ConsistencyPolicy(ABC):
         logger.info(f"Consistency policy '{policy_name}' initialized")
     
     @abstractmethod
-    def apply_policy(self, operation: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    def apply_policy(self, operation, context):
         """
         Apply the consistency policy to an operation
         
@@ -128,7 +126,7 @@ class ConsistencyPolicy(ABC):
         pass
     
     @abstractmethod
-    def check_violation(self, operation: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    def check_violation(self, operation, context):
         """
         Check if an operation violates the consistency policy
         
@@ -141,20 +139,20 @@ class ConsistencyPolicy(ABC):
         """
         pass
     
-    def get_policy_name(self) -> str:
+    def get_policy_name(self):
         """Get the policy name"""
         return self.policy_name
     
-    def is_enabled(self) -> bool:
+    def is_enabled(self):
         """Check if policy is enabled"""
         return self.enabled
     
-    def enable(self) -> None:
+    def enable(self):
         """Enable the policy"""
         self.enabled = True
         logger.info(f"Policy '{self.policy_name}' enabled")
     
-    def disable(self) -> None:
+    def disable(self):
         """Disable the policy"""
         self.enabled = False
         logger.info(f"Policy '{self.policy_name}' disabled")

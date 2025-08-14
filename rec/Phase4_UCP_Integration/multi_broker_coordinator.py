@@ -19,12 +19,12 @@ with multiple broker clusters and complex emergency response scenarios.
 import time
 import threading
 import logging
-from typing import Dict, Optional, List, Set, Any, Tuple
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict
 import json
+from typing import Any, Dict, List, Optional, Set
 
 # Import Phase 1 foundation
 import sys

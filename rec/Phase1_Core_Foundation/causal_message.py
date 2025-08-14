@@ -8,15 +8,19 @@ systems with emergency awareness.
 This provides the communication foundation for vector clock coordination.
 """
 
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import logging
 
 # Import from our local files  
-from vector_clock import VectorClock, EmergencyContext
+try:
+    # When run as module
+    from .vector_clock import VectorClock, EmergencyContext
+except ImportError:
+    # When run directly
+    from vector_clock import VectorClock, EmergencyContext
 
-# Configure logging
+# Setup simple logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -28,27 +32,27 @@ class CausalMessage:
     Encapsulates message content along with vector clock timestamp
     to ensure causal delivery order in distributed systems.
     """
-    content: Any                    # Message payload
+    content: any                    # Message payload
     sender_id: str                 # Sender node identifier
-    vector_clock: Dict[str, int]   # Vector clock snapshot at send time
+    vector_clock: dict   # Vector clock snapshot at send time
     message_type: str = "normal"   # "normal" or "emergency"
     priority: int = 1             # Higher values = higher priority
-    timestamp: Optional[str] = None # Physical timestamp for debugging
+    timestamp: str = None # Physical timestamp for debugging
     
     def __post_init__(self):
         """Set timestamp if not provided"""
         if self.timestamp is None:
             self.timestamp = datetime.now().isoformat()
     
-    def is_emergency(self) -> bool:
+    def is_emergency(self):
         """Check if this is an emergency message"""
         return self.message_type == "emergency"
     
-    def get_logical_time(self) -> int:
+    def get_logical_time(self):
         """Get logical timestamp from sender's perspective"""
         return self.vector_clock.get(self.sender_id, 0)
     
-    def __str__(self) -> str:
+    def __str__(self):
         """String representation of message"""
         return f"CausalMessage(from={self.sender_id}, type={self.message_type}, clock={self.vector_clock})"
 
@@ -61,7 +65,7 @@ class MessageHandler:
     and proper causal delivery ordering.
     """
     
-    def __init__(self, node_id: str):
+    def __init__(self, node_id):
         """
         Initialize message handler for a node
         
@@ -76,7 +80,7 @@ class MessageHandler:
         
         logger.info(f"Message handler initialized for node: {node_id}")
     
-    def send_message(self, content: Any, recipient_id: str, is_emergency: bool = False) -> CausalMessage:
+    def send_message(self, content, recipient_id, is_emergency=False):
         """
         Create message for sending with current vector clock
         
@@ -103,7 +107,7 @@ class MessageHandler:
         logger.info(f"Sending {message.message_type} message to {recipient_id}")
         return message
     
-    def receive_message(self, message: CausalMessage) -> None:
+    def receive_message(self, message):
         """
         Receive and process incoming message with causal ordering
         
@@ -121,7 +125,7 @@ class MessageHandler:
         # Try to deliver any messages that are now ready
         self._process_pending_messages()
     
-    def _process_pending_messages(self) -> None:
+    def _process_pending_messages(self):
         """
         Process pending messages in causal order
         
@@ -145,7 +149,7 @@ class MessageHandler:
         for idx in reversed(delivered_indices):
             del self.pending_messages[idx]
     
-    def _can_deliver_message(self, message: CausalMessage) -> bool:
+    def _can_deliver_message(self, message):
         """
         Check if message can be delivered based on causal dependencies
         
@@ -159,16 +163,18 @@ class MessageHandler:
         for node_id, timestamp in message.vector_clock.items():
             if node_id == message.sender_id:
                 # For sender's timestamp, we need exactly the next event
-                if self.vector_clock.get_time_for_node(node_id) != timestamp - 1:
+                our_time = self.vector_clock.get_time_for_node(node_id)
+                if our_time != timestamp - 1:
                     return False
             else:
                 # For other nodes, we need to have seen at least this timestamp
-                if self.vector_clock.get_time_for_node(node_id) < timestamp:
+                our_time = self.vector_clock.get_time_for_node(node_id)
+                if our_time < timestamp:
                     return False
         
         return True
     
-    def _deliver_message(self, message: CausalMessage) -> None:
+    def _deliver_message(self, message):
         """
         Deliver message to application layer
         
@@ -183,7 +189,7 @@ class MessageHandler:
         else:
             self._handle_normal_message(message)
     
-    def _handle_emergency_message(self, message: CausalMessage) -> None:
+    def _handle_emergency_message(self, message):
         """
         Handle emergency message delivery
         
@@ -196,12 +202,15 @@ class MessageHandler:
             emergency_level = message.content.get('emergency_level', 'high')
             
             # Update local emergency context
-            from .vector_clock import create_emergency
+            try:
+                from .vector_clock import create_emergency
+            except ImportError:
+                from vector_clock import create_emergency
             self.emergency_context = create_emergency(emergency_type, emergency_level)
             
             logger.warning(f"Emergency context updated: {self.emergency_context}")
     
-    def _handle_normal_message(self, message: CausalMessage) -> None:
+    def _handle_normal_message(self, message):
         """
         Handle normal message delivery
         
@@ -211,7 +220,7 @@ class MessageHandler:
         # Process normal message content
         logger.info(f"Processing normal message: {message.content}")
     
-    def send_emergency_alert(self, emergency_type: str, emergency_level: str, location: Optional[str] = None) -> CausalMessage:
+    def send_emergency_alert(self, emergency_type, emergency_level, location=None):
         """
         Send emergency alert message
         
@@ -234,15 +243,15 @@ class MessageHandler:
         
         return self.send_message(emergency_payload, "broadcast", is_emergency=True)
     
-    def get_pending_count(self) -> int:
+    def get_pending_count(self):
         """Get number of pending messages"""
         return len(self.pending_messages)
     
-    def has_emergency_pending(self) -> bool:
+    def has_emergency_pending(self):
         """Check if any emergency messages are pending"""
         return any(msg.is_emergency() for msg in self.pending_messages)
     
-    def get_message_stats(self) -> Dict[str, int]:
+    def get_message_stats(self):
         """Get message processing statistics"""
         return {
             'pending': len(self.pending_messages),
@@ -251,7 +260,7 @@ class MessageHandler:
             'emergency_processed': sum(1 for msg in self.processed_messages if msg.is_emergency())
         }
     
-    def clear_processed_messages(self) -> int:
+    def clear_processed_messages(self):
         """Clear processed message archive and return count"""
         count = len(self.processed_messages)
         self.processed_messages.clear()
@@ -259,8 +268,7 @@ class MessageHandler:
         return count
 
 # Utility functions for emergency communication
-def broadcast_emergency(handlers: List[MessageHandler], emergency_type: str, 
-                       emergency_level: str, location: Optional[str] = None) -> List[CausalMessage]:
+def broadcast_emergency(handlers, emergency_type, emergency_level, location=None):
     """
     Broadcast emergency to multiple message handlers
     
@@ -271,7 +279,7 @@ def broadcast_emergency(handlers: List[MessageHandler], emergency_type: str,
         location: Optional location
         
     Returns:
-        List[CausalMessage]: Emergency messages sent
+        List of emergency messages sent
     """
     if not handlers:
         return []
@@ -286,7 +294,7 @@ def broadcast_emergency(handlers: List[MessageHandler], emergency_type: str,
     
     return [emergency_msg]
 
-def create_message_network(node_ids: List[str]) -> Dict[str, MessageHandler]:
+def create_message_network(node_ids):
     """
     Create a network of connected message handlers
     
@@ -294,7 +302,7 @@ def create_message_network(node_ids: List[str]) -> Dict[str, MessageHandler]:
         node_ids: List of node identifiers
         
     Returns:
-        Dict[str, MessageHandler]: Network of message handlers
+        Dictionary of message handlers
     """
     handlers = {}
     for node_id in node_ids:

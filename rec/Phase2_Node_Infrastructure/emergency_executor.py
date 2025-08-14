@@ -21,7 +21,6 @@ Based on UCP Executor with enhancements for:
 import time
 import threading
 import logging
-from typing import Dict, Optional, List, Set, Any
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
@@ -29,14 +28,18 @@ from queue import PriorityQueue, Empty
 from abc import ABC, abstractmethod
 
 # Import Phase 1 foundation
-import sys
-import os
-phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
-sys.path.insert(0, phase1_path)
-
-from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
-from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
-from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
+try:
+    from ..Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
+    from ..Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
+    from ..Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation'))
+    from vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
+    from causal_message import CausalMessage, MessageHandler
+    from causal_consistency import CausalConsistencyManager
 
 LOG = logging.getLogger(__name__)
 
@@ -63,11 +66,11 @@ class ExecutorJob:
     job_id: UUID
     data: dict
     priority: JobPriority = JobPriority.NORMAL_MEDIUM
-    capabilities: Set[str] = field(default_factory=set)
-    emergency_context: Optional[EmergencyContext] = None
-    vector_clock: Optional[dict] = None
+    capabilities: set = field(default_factory=set)
+    emergency_context: EmergencyContext = None
+    vector_clock: dict = None
     submitted_at: float = field(default_factory=time.time)
-    causal_message: Optional[CausalMessage] = None
+    causal_message: CausalMessage = None
     
     def __lt__(self, other):
         """Priority comparison for queue ordering"""
@@ -80,12 +83,12 @@ class ExecutorJob:
 @dataclass
 class ExecutorCapabilities:
     """Executor capabilities and resources"""
-    supported_languages: Set[str] = field(default_factory=lambda: {"python"})
+    supported_languages: set = field(default_factory=lambda: {"python"})
     max_concurrent_jobs: int = 4
     emergency_capable: bool = True
-    resource_allocation: Dict[str, float] = field(default_factory=dict)
+    resource_allocation: dict = field(default_factory=dict)
     
-    def is_capable(self, required_caps: Set[str]) -> bool:
+    def is_capable(self, required_caps):
         """Check if executor can handle required capabilities"""
         return required_caps.issubset(self.supported_languages)
 
@@ -93,22 +96,22 @@ class JobExecutionStrategy(ABC):
     """Abstract base for job execution strategies"""
     
     @abstractmethod
-    def should_execute_immediately(self, job: ExecutorJob, current_load: int) -> bool:
+    def should_execute_immediately(self, job, current_load):
         """Determine if job should execute immediately"""
         pass
     
     @abstractmethod
-    def allocate_resources(self, job: ExecutorJob) -> Dict[str, Any]:
+    def allocate_resources(self, job):
         """Allocate resources for job execution"""
         pass
 
 class EmergencyExecutionStrategy(JobExecutionStrategy):
     """Emergency-aware execution strategy"""
     
-    def __init__(self, max_concurrent: int = 4):
+    def __init__(self, max_concurrent=4):
         self.max_concurrent = max_concurrent
     
-    def should_execute_immediately(self, job: ExecutorJob, current_load: int) -> bool:
+    def should_execute_immediately(self, job, current_load):
         """Determine if job should execute immediately"""
         # Emergency jobs always get priority
         if job.emergency_context and job.emergency_context.is_critical():
@@ -117,7 +120,7 @@ class EmergencyExecutionStrategy(JobExecutionStrategy):
         # Normal jobs only if under capacity
         return current_load < self.max_concurrent
     
-    def allocate_resources(self, job: ExecutorJob) -> Dict[str, Any]:
+    def allocate_resources(self, job):
         """Allocate resources for job execution"""
         resources = {
             "cpu_cores": 1,
@@ -150,7 +153,7 @@ class SimpleEmergencyExecutor:
     - Health monitoring and status reporting
     """
     
-    def __init__(self, node_id: str, capabilities: ExecutorCapabilities = None):
+    def __init__(self, node_id, capabilities=None):
         """Initialize emergency executor"""
         self.node_id = node_id
         self.vector_clock = VectorClock(node_id)
@@ -159,13 +162,13 @@ class SimpleEmergencyExecutor:
         # Execution management
         self.status = ExecutorStatus.IDLE
         self.job_queue = PriorityQueue()
-        self.active_jobs: Dict[UUID, ExecutorJob] = {}
-        self.completed_jobs: Set[UUID] = set()
+        self.active_jobs = {}
+        self.completed_jobs = set()
         self.job_lock = threading.RLock()
         
         # Emergency management
         self.emergency_mode = False
-        self.current_emergency: Optional[EmergencyContext] = None
+        self.current_emergency = None
         self.execution_strategy = EmergencyExecutionStrategy(
             self.capabilities.max_concurrent_jobs
         )
@@ -181,7 +184,7 @@ class SimpleEmergencyExecutor:
         
         LOG.info(f"EmergencyExecutor {node_id} initialized")
     
-    def submit_job(self, job: ExecutorJob) -> bool:
+    def submit_job(self, job):
         """
         Submit job for execution with emergency prioritization
         
@@ -247,7 +250,7 @@ class SimpleEmergencyExecutor:
         
         LOG.warning(f"Executor {self.node_id} emergency mode activated: {emergency_type} ({priority_level})")
     
-    def clear_emergency_mode(self) -> None:
+    def clear_emergency_mode(self):
         """Clear emergency mode"""
         self.vector_clock.tick()
         
@@ -258,11 +261,11 @@ class SimpleEmergencyExecutor:
         LOG.info(f"Executor {self.node_id} emergency mode cleared")
     
     @property
-    def in_emergency_mode(self) -> bool:
+    def in_emergency_mode(self):
         """Check if executor is in emergency mode"""
         return self.emergency_mode
     
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self):
         """Get executor status information"""
         with self.job_lock:
             return {
@@ -281,7 +284,7 @@ class SimpleEmergencyExecutor:
                 "last_heartbeat": self.last_heartbeat
             }
     
-    def heartbeat(self) -> Dict[str, Any]:
+    def heartbeat(self):
         """Send heartbeat with current status"""
         self.vector_clock.tick()
         self.last_heartbeat = time.time()
@@ -290,7 +293,7 @@ class SimpleEmergencyExecutor:
         LOG.debug(f"Heartbeat from executor {self.node_id}")
         return status
     
-    def cancel_job(self, job_id: UUID) -> bool:
+    def cancel_job(self, job_id):
         """
         Cancel job execution
         
@@ -432,7 +435,7 @@ class SimpleEmergencyExecutor:
             
             return False
     
-    def _simulate_job_execution(self, job: ExecutorJob, resources: Dict[str, Any]) -> float:
+    def _simulate_job_execution(self, job, resources):
         """
         Simulate job execution time
         

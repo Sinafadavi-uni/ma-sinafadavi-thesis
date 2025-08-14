@@ -22,7 +22,6 @@ This is a core thesis contribution combining:
 import time
 import threading
 import logging
-from typing import Dict, Optional, List, Set, Any, Tuple
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
@@ -35,15 +34,25 @@ import os
 phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
 sys.path.insert(0, phase1_path)
 
-from vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
-from causal_message import CausalMessage, MessageHandler  
-from causal_consistency import CausalConsistencyManager, FCFSConsistencyPolicy
+try:
+    from vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
+    from causal_message import CausalMessage, MessageHandler  
+    from causal_consistency import CausalConsistencyManager, FCFSConsistencyPolicy
+except ImportError:
+    # Try relative imports if absolute imports fail
+    from ..Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, EmergencyLevel, create_emergency
+    from ..Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler  
+    from ..Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager, FCFSConsistencyPolicy
 
 # Import Phase 2 infrastructure
 phase2_path = os.path.join(os.path.dirname(__file__), '..', 'Phase2_Node_Infrastructure')
 sys.path.insert(0, phase2_path)
 
-from emergency_executor import SimpleEmergencyExecutor, ExecutorJob, JobPriority, ExecutorCapabilities
+try:
+    from emergency_executor import SimpleEmergencyExecutor, ExecutorJob, JobPriority, ExecutorCapabilities
+except ImportError:
+    # Try relative imports if absolute imports fail
+    from ..Phase2_Node_Infrastructure.emergency_executor import SimpleEmergencyExecutor, ExecutorJob, JobPriority, ExecutorCapabilities
 
 LOG = logging.getLogger(__name__)
 
@@ -61,27 +70,27 @@ class CausalJob:
     """Job with causal dependency tracking"""
     job_id: UUID
     data: dict
-    vector_clock_snapshot: Dict[str, int]
-    dependencies: Set[UUID] = field(default_factory=set)
-    causal_predecessors: List[UUID] = field(default_factory=list)
+    vector_clock_snapshot: dict = field(default_factory=dict)
+    dependencies: set = field(default_factory=set)
+    causal_predecessors: list = field(default_factory=list)
     state: CausalJobState = CausalJobState.PENDING
     submitted_at: float = field(default_factory=time.time)
-    started_at: Optional[float] = None
-    completed_at: Optional[float] = None
+    started_at: float = None
+    completed_at: float = None
     priority: JobPriority = JobPriority.NORMAL_MEDIUM
-    emergency_context: Optional[EmergencyContext] = None
+    emergency_context: object = None
     
-    def is_ready_for_execution(self, completed_jobs: Set[UUID]) -> bool:
+    def is_ready_for_execution(self, completed_jobs):
         """Check if all causal dependencies are satisfied"""
         return all(dep_id in completed_jobs for dep_id in self.dependencies)
 
 @dataclass 
 class ExecutionCoordination:
     """Coordination state for distributed execution"""
-    node_vector_clocks: Dict[str, Dict[str, int]] = field(default_factory=dict)
-    global_job_order: List[UUID] = field(default_factory=list)
-    fcfs_timestamps: Dict[UUID, float] = field(default_factory=dict)
-    emergency_priorities: Dict[UUID, int] = field(default_factory=dict)
+    node_vector_clocks: dict = field(default_factory=dict)
+    global_job_order: list = field(default_factory=list)
+    fcfs_timestamps: dict = field(default_factory=dict)
+    emergency_priorities: dict = field(default_factory=dict)
 
 class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
     """
@@ -100,9 +109,9 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         super().__init__(node_id, capabilities)
         
         # Vector clock execution management
-        self.causal_jobs: Dict[UUID, CausalJob] = {}
-        self.job_dependencies: Dict[UUID, Set[UUID]] = defaultdict(set)
-        self.dependency_graph: Dict[UUID, Set[UUID]] = defaultdict(set)
+        self.causal_jobs = {}
+        self.job_dependencies = defaultdict(set)
+        self.dependency_graph = defaultdict(set)
         self.causal_lock = threading.RLock()
         
         # Coordination management
@@ -114,13 +123,13 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         self.global_job_counter = 0
         
         # Cross-node synchronization
-        self.peer_executors: Dict[str, 'EnhancedVectorClockExecutor'] = {}
+        self.peer_executors = {}
         self.sync_interval = 5.0  # Sync every 5 seconds
         self.sync_thread = None
         
         LOG.info(f"EnhancedVectorClockExecutor {node_id} initialized with vector clock coordination")
     
-    def submit_causal_job(self, job_data: dict, dependencies: Set[UUID] = None,
+    def submit_causal_job(self, job_data, dependencies=None,
                          emergency_context: EmergencyContext = None) -> UUID:
         """
         Submit job with causal dependency tracking
@@ -183,11 +192,11 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         LOG.info(f"Causal job {job_id} submitted with {len(dependencies or [])} dependencies")
         return job_id
     
-    def get_vector_clock_state(self) -> Dict[str, int]:
+    def get_vector_clock_state(self):
         """Get current vector clock state for coordination"""
         return self.vector_clock.clock.copy()
     
-    def sync_vector_clock(self, peer_clock: Dict[str, int], peer_node: str = None) -> None:
+    def sync_vector_clock(self, peer_clock, peer_node=None):
         """
         Synchronize vector clock with peer executor
         
@@ -206,12 +215,12 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         
         LOG.debug(f"Vector clock synchronized with peer {peer_node}")
     
-    def register_peer_executor(self, peer_node: str, peer_executor: 'EnhancedVectorClockExecutor') -> None:
+    def register_peer_executor(self, peer_node, peer_executor):
         """Register peer executor for coordination"""
         self.peer_executors[peer_node] = peer_executor
         LOG.info(f"Registered peer executor: {peer_node}")
     
-    def coordinate_job_execution(self, job_id: UUID) -> bool:
+    def coordinate_job_execution(self, job_id):
         """
         Coordinate job execution across distributed nodes using FCFS policy
         
@@ -272,7 +281,7 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
                     self._schedule_causal_job(causal_job)
                     LOG.info(f"Job {job_id} unblocked by dependency {completed_job_id} from {completing_node}")
     
-    def get_causal_execution_status(self) -> Dict[str, Any]:
+    def get_causal_execution_status(self):
         """Get detailed causal execution status"""
         with self.causal_lock:
             pending_jobs = [job_id for job_id, job in self.causal_jobs.items() 
@@ -303,7 +312,7 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
             "peer_executors": list(self.peer_executors.keys())
         }
     
-    def start(self) -> None:
+    def start(self):
         """Start enhanced executor with coordination"""
         super().start()
         
@@ -318,7 +327,7 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         
         LOG.info(f"EnhancedVectorClockExecutor {self.node_id} started with coordination")
     
-    def stop(self) -> None:
+    def stop(self):
         """Stop enhanced executor"""
         super().stop()
         
@@ -327,7 +336,7 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         
         LOG.info(f"EnhancedVectorClockExecutor {self.node_id} stopped")
     
-    def _schedule_causal_job(self, causal_job: CausalJob) -> None:
+    def _schedule_causal_job(self, causal_job):
         """Schedule causal job for execution"""
         # Convert to ExecutorJob for base class
         executor_job = ExecutorJob(
@@ -344,7 +353,7 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         
         LOG.info(f"Causal job {causal_job.job_id} scheduled for execution")
     
-    def _check_blocked_jobs(self) -> None:
+    def _check_blocked_jobs(self):
         """Check if any blocked jobs can now proceed"""
         with self.causal_lock:
             unblocked_jobs = []
@@ -361,7 +370,7 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         if unblocked_jobs:
             LOG.info(f"Unblocked {len(unblocked_jobs)} jobs after vector clock sync")
     
-    def _vector_clock_sync_worker(self) -> None:
+    def _vector_clock_sync_worker(self):
         """Background worker for vector clock synchronization"""
         LOG.info(f"Vector clock sync worker started for {self.node_id}")
         
@@ -381,7 +390,7 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         
         LOG.info(f"Vector clock sync worker stopped for {self.node_id}")
     
-    def _execute_job(self, job: ExecutorJob) -> bool:
+    def _execute_job(self, job):
         """Override to handle causal job execution"""
         # Check if we should coordinate execution
         if self.peer_executors and not self.coordinate_job_execution(job.job_id):
@@ -417,7 +426,7 @@ class EnhancedVectorClockExecutor(SimpleEmergencyExecutor):
         
         return result
     
-    def _notify_job_completion(self, job_id: UUID) -> None:
+    def _notify_job_completion(self, job_id):
         """Notify peer executors of job completion"""
         for peer_node, peer_executor in self.peer_executors.items():
             # Check if peer has dependent jobs

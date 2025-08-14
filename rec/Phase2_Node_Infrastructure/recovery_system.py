@@ -22,7 +22,6 @@ import time
 import threading
 import logging
 import random
-from typing import Dict, Set, Optional, List, Tuple
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
@@ -30,14 +29,18 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 
 # Import Phase 1 foundation
-import sys
-import os
-phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
-sys.path.insert(0, phase1_path)
-
-from vector_clock import VectorClock, EmergencyContext
-from causal_message import CausalMessage, MessageHandler
-from causal_consistency import CausalConsistencyManager
+try:
+    from ..Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext
+    from ..Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
+    from ..Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation'))
+    from vector_clock import VectorClock, EmergencyContext
+    from causal_message import CausalMessage, MessageHandler
+    from causal_consistency import CausalConsistencyManager
 
 LOG = logging.getLogger(__name__)
 
@@ -58,7 +61,7 @@ class NodeInfo:
     status: NodeStatus = NodeStatus.HEALTHY
     last_heartbeat: float = field(default_factory=time.time)
     vector_clock: VectorClock = None
-    emergency_context: Optional[EmergencyContext] = None
+    emergency_context: EmergencyContext = None
     failure_count: int = 0
     recovery_attempts: int = 0
     
@@ -73,8 +76,8 @@ class RecoveryAction:
     target_node: str
     action_type: str
     priority: int = 1
-    emergency_context: Optional[EmergencyContext] = None
-    vector_clock: Optional[dict] = None
+    emergency_context = None
+    vector_clock = None
     scheduled_at: float = field(default_factory=time.time)
 
 class RecoveryStrategy(ABC):
@@ -86,7 +89,7 @@ class RecoveryStrategy(ABC):
         pass
     
     @abstractmethod
-    def create_recovery_plan(self, node_info: NodeInfo) -> List[RecoveryAction]:
+    def create_recovery_plan(self, node_info):
         """Create recovery plan for failed node"""
         pass
 
@@ -110,7 +113,7 @@ class SimpleRecoveryStrategy(RecoveryStrategy):
         
         return False
     
-    def create_recovery_plan(self, node_info: NodeInfo) -> List[RecoveryAction]:
+    def create_recovery_plan(self, node_info):
         """Create recovery plan for failed node"""
         actions = []
         
@@ -165,20 +168,20 @@ class SimpleRecoveryManager:
         self.heartbeat_timeout = heartbeat_timeout
         
         # Node management
-        self.monitored_nodes: Dict[str, NodeInfo] = {}
+        self.monitored_nodes = {}
         self.node_lock = threading.RLock()
         
         # Recovery management
         self.recovery_strategy = SimpleRecoveryStrategy()
-        self.recovery_queue: List[RecoveryAction] = []
+        self.recovery_queue = []
         self.recovery_lock = threading.RLock()
         
         # Add broker reference for job redeployment
         self.associated_broker = None
-        self.redeployment_history: Dict[UUID, List[str]] = defaultdict(list)
+        self.redeployment_history = defaultdict(list)
         
         # Emergency and consistency management
-        self.current_emergency: Optional[EmergencyContext] = None
+        self.current_emergency = None
         self.message_handler = MessageHandler(self.manager_id)
         self.consistency_manager = CausalConsistencyManager(self.manager_id)
         
@@ -311,13 +314,13 @@ class SimpleRecoveryManager:
         
         LOG.info("Recovery emergency mode cleared")
     
-    def get_node_status(self, node_id: str) -> Optional[NodeStatus]:
+    def get_node_status(self, node_id):
         """Get status of monitored node"""
         with self.node_lock:
             node_info = self.monitored_nodes.get(node_id)
             return node_info.status if node_info else None
     
-    def get_healthy_nodes(self) -> List[str]:
+    def get_healthy_nodes(self):
         """Get list of healthy node IDs"""
         with self.node_lock:
             return [
@@ -325,7 +328,7 @@ class SimpleRecoveryManager:
                 if node_info.status == NodeStatus.HEALTHY
             ]
     
-    def get_failed_nodes(self) -> List[str]:
+    def get_failed_nodes(self):
         """Get list of failed node IDs"""
         with self.node_lock:
             return [
@@ -526,7 +529,7 @@ class SimpleRecoveryManager:
             for job_id in orphaned_jobs:
                 self.redeploy_job(job_id, executor_id)
     
-    def get_orphaned_jobs(self, failed_executor_id: str) -> List[UUID]:
+    def get_orphaned_jobs(self, failed_executor_id):
         """Get all jobs that were running on failed executor"""
         if not self.associated_broker:
             return []
@@ -588,7 +591,7 @@ class SimpleRecoveryManager:
             LOG.error(f"Failed to redeploy job {job_id}: {e}")
             return False
     
-    def get_job_info(self, job_id: UUID) -> Optional['JobInfo']:
+    def get_job_info(self, job_id):
         """Retrieve job info from broker's distributed jobs"""
         if not self.associated_broker:
             return None

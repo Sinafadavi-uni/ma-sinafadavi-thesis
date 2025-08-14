@@ -8,15 +8,21 @@ with FCFS policy enforcement for data replication.
 This is the heart of your thesis contribution - causal consistency + FCFS.
 """
 
-from typing import Dict, List, Any, Optional
 import logging
 
-# Import from our local Phase 1 files
-from consistency_manager import BaseConsistencyManager, ConsistencyPolicy
-from vector_clock import VectorClock, EmergencyContext
-from causal_message import CausalMessage, MessageHandler
+# Import handling for both direct execution and module import
+try:
+    # When run as module
+    from .consistency_manager import BaseConsistencyManager, ConsistencyPolicy
+    from .vector_clock import VectorClock, EmergencyContext
+    from .causal_message import CausalMessage, MessageHandler
+except ImportError:
+    # When run directly
+    from consistency_manager import BaseConsistencyManager, ConsistencyPolicy
+    from vector_clock import VectorClock, EmergencyContext
+    from causal_message import CausalMessage, MessageHandler
 
-# Configure logging
+# Setup simple logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -31,7 +37,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
     This is a core contribution of the thesis.
     """
     
-    def __init__(self, node_id: str):
+    def __init__(self, node_id):
         """
         Initialize causal consistency manager
         
@@ -47,7 +53,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
         
         logger.info(f"Causal consistency manager initialized for node: {node_id}")
     
-    def ensure_consistency(self, operation: Dict[str, Any]) -> bool:
+    def ensure_consistency(self, operation):
         """
         Ensure causal consistency for an operation
         
@@ -63,14 +69,14 @@ class CausalConsistencyManager(BaseConsistencyManager):
                 logger.warning(f"Operation missing vector clock: {operation}")
                 return False
             
-            # Validate causal dependencies are satisfied
+            # Check if causal dependencies are satisfied
             operation_clock = operation['vector_clock']
             if self._check_causal_dependencies(operation_clock):
                 # Apply operation and update local state
                 self._apply_operation(operation)
                 return True
             else:
-                # Buffer operation until dependencies are satisfied
+                # Wait for dependencies
                 self.pending_operations.append(operation)
                 logger.info(f"Operation buffered waiting for causal dependencies")
                 return False
@@ -79,7 +85,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
             logger.error(f"Error ensuring consistency: {e}")
             return False
     
-    def validate_operation(self, operation: Dict[str, Any]) -> bool:
+    def validate_operation(self, operation):
         """
         Validate operation against causal consistency requirements
         
@@ -97,7 +103,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
                     logger.warning(f"Operation missing required field: {field}")
                     return False
             
-            # Validate vector clock format
+            # Check vector clock format
             vector_clock = operation['vector_clock']
             if not isinstance(vector_clock, dict):
                 logger.warning("Vector clock must be a dictionary")
@@ -115,7 +121,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
             logger.error(f"Error validating operation: {e}")
             return False
     
-    def update_state(self, state_update: Dict[str, Any]) -> None:
+    def update_state(self, state_update):
         """
         Update consistency manager state
         
@@ -140,7 +146,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
         except Exception as e:
             logger.error(f"Error updating state: {e}")
     
-    def _check_causal_dependencies(self, operation_clock: Dict[str, int]) -> bool:
+    def _check_causal_dependencies(self, operation_clock):
         """
         Check if causal dependencies are satisfied for operation
         
@@ -162,7 +168,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
         
         return True
     
-    def _apply_operation(self, operation: Dict[str, Any]) -> None:
+    def _apply_operation(self, operation):
         """
         Apply operation and update local vector clock
         
@@ -177,7 +183,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
         self.completed_operations.append(operation)
         logger.info(f"Applied operation {operation.get('operation_id', 'unknown')}")
     
-    def _process_pending_operations(self) -> None:
+    def _process_pending_operations(self):
         """Process pending operations that might now be ready"""
         ready_operations = []
         still_pending = []
@@ -194,7 +200,7 @@ class CausalConsistencyManager(BaseConsistencyManager):
         if ready_operations:
             logger.info(f"Processed {len(ready_operations)} pending operations")
     
-    def get_consistency_state(self) -> Dict[str, Any]:
+    def get_consistency_state(self):
         """Get current consistency state for monitoring"""
         return {
             'node_id': self.node_id,
@@ -225,7 +231,7 @@ class FCFSConsistencyPolicy(ConsistencyPolicy):
         
         logger.info("FCFS consistency policy initialized")
     
-    def apply_policy(self, operation: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    def apply_policy(self, operation, context):
         """
         Apply FCFS policy to job submission/result operation
         
@@ -252,7 +258,7 @@ class FCFSConsistencyPolicy(ConsistencyPolicy):
             logger.error(f"Error applying FCFS policy: {e}")
             return False
     
-    def check_violation(self, operation: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    def check_violation(self, operation, context):
         """
         Check if operation violates FCFS policy
         
@@ -284,7 +290,7 @@ class FCFSConsistencyPolicy(ConsistencyPolicy):
         
         return False
     
-    def _handle_job_submission(self, operation: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    def _handle_job_submission(self, operation, context):
         """Handle job submission under FCFS policy"""
         job_id = operation['job_id']
         
@@ -307,7 +313,7 @@ class FCFSConsistencyPolicy(ConsistencyPolicy):
         logger.info(f"Job {job_id} submitted under FCFS policy")
         return True
     
-    def _handle_result_submission(self, operation: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    def _handle_result_submission(self, operation, context):
         """Handle result submission under FCFS policy"""
         job_id = operation['job_id']
         
@@ -335,7 +341,7 @@ class FCFSConsistencyPolicy(ConsistencyPolicy):
         logger.info(f"First result for job {job_id} accepted under FCFS policy")
         return True
     
-    def get_fcfs_stats(self) -> Dict[str, Any]:
+    def get_fcfs_stats(self):
         """Get FCFS policy statistics"""
         completed_jobs = len(self.job_results)
         pending_jobs = len(self.job_submissions) - completed_jobs
@@ -350,8 +356,7 @@ class FCFSConsistencyPolicy(ConsistencyPolicy):
         }
 
 # Utility functions for testing and demonstration
-def create_causal_operation(operation_id: str, operation_type: str, 
-                          vector_clock: Dict[str, int], **kwargs) -> Dict[str, Any]:
+def create_causal_operation(operation_id, operation_type, vector_clock, **kwargs):
     """
     Create a causal operation with required fields
     
@@ -362,7 +367,7 @@ def create_causal_operation(operation_id: str, operation_type: str,
         **kwargs: Additional operation fields
         
     Returns:
-        Dict[str, Any]: Formatted causal operation
+        Dictionary of formatted causal operation
     """
     operation = {
         'operation_id': operation_id,

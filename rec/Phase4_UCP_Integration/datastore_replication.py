@@ -8,7 +8,6 @@ import time
 import threading
 import logging
 import hashlib
-from typing import Dict, Optional, List, Set, Any, Tuple
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
@@ -37,13 +36,13 @@ class DataItem:
     """Data item with metadata"""
     key: str
     value: bytes
-    vector_clock: Dict[str, int]
+    vector_clock: dict
     checksum: str
     size: int
     created_at: float
     last_modified: float
     replication_factor: int = 1
-    replicas: Set[str] = field(default_factory=set)
+    replicas: set = field(default_factory=set)
 
 @dataclass
 class DatastoreNode:
@@ -55,7 +54,7 @@ class DatastoreNode:
     used_space: int = 0
     available: bool = True
     last_heartbeat: float = field(default_factory=time.time)
-    vector_clock: Optional[VectorClock] = None
+    vector_clock: object = None
     
     def __post_init__(self):
         if self.vector_clock is None:
@@ -85,13 +84,13 @@ class DatastoreReplicationManager:
         self.emergency_mode = False
         
         # Datastore management
-        self.datastores: Dict[str, DatastoreNode] = {}
+        self.datastores = {}
         self.datastore_lock = threading.RLock()
         
         # Data management
-        self.data_registry: Dict[str, DataItem] = {}  # key -> DataItem
-        self.replica_locations: Dict[str, Set[str]] = defaultdict(set)  # key -> {datastore_ids}
-        self.pending_replications: List[Tuple[str, str]] = []  # [(key, target_datastore)]
+        self.data_registry = {}  # key -> DataItem
+        self.replica_locations = defaultdict(set)  # key -> {datastore_ids}
+        self.pending_replications = []  # [(key, target_datastore)]
         
         # Monitoring
         self.replication_metrics = {
@@ -121,7 +120,7 @@ class DatastoreReplicationManager:
             
         LOG.info(f"Datastore {node_id} registered with capacity {capacity}")
     
-    def store_data(self, key: str, value: bytes, replication_factor: Optional[int] = None) -> bool:
+    def store_data(self, key, value, replication_factor=None):
         """
         Store data with replication
         
@@ -183,7 +182,7 @@ class DatastoreReplicationManager:
         
         return success_count > 0
     
-    def retrieve_data(self, key: str) -> Optional[bytes]:
+    def retrieve_data(self, key):
         """
         Retrieve data from available replica
         
@@ -246,7 +245,7 @@ class DatastoreReplicationManager:
             self.current_strategy = ReplicationStrategy.ASYNC
             LOG.info("Emergency mode deactivated - normal replication resumed")
     
-    def get_replication_status(self) -> Dict[str, Any]:
+    def get_replication_status(self):
         """Get comprehensive replication status"""
         with self.datastore_lock:
             available_datastores = sum(
@@ -321,7 +320,7 @@ class DatastoreReplicationManager:
         else:
             return self.default_replication_factor
     
-    def _select_datastores_for_replication(self, size: int, count: int) -> List[str]:
+    def _select_datastores_for_replication(self, size, count):
         """Select datastores for replication"""
         available = []
         
@@ -356,7 +355,7 @@ class DatastoreReplicationManager:
             self.replication_metrics["failed_replications"] += 1
             return False
     
-    def _retrieve_from_datastore(self, datastore_id: str, key: str) -> Optional[bytes]:
+    def _retrieve_from_datastore(self, datastore_id, key):
         """Retrieve data from specific datastore"""
         try:
             # Simulate retrieval operation

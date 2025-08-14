@@ -21,7 +21,6 @@ Based on UCP ExecutorBroker with enhancements for:
 import time
 import threading
 import random
-from typing import Dict, Optional, Set, List
 from uuid import UUID, uuid4
 from queue import Queue, Empty
 from dataclasses import dataclass, field
@@ -30,14 +29,18 @@ from collections import defaultdict
 import logging
 
 # Import Phase 1 foundation
-import sys
-import os
-phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
-sys.path.insert(0, phase1_path)
-
-from rec.Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, create_emergency
-from rec.Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
-from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
+try:
+    from ..Phase1_Core_Foundation.vector_clock import VectorClock, EmergencyContext, create_emergency
+    from ..Phase1_Core_Foundation.causal_message import CausalMessage, MessageHandler
+    from ..Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation'))
+    from vector_clock import VectorClock, EmergencyContext, create_emergency
+    from causal_message import CausalMessage, MessageHandler
+    from causal_consistency import CausalConsistencyManager
 
 LOG = logging.getLogger(__name__)
 
@@ -48,9 +51,9 @@ class ExecutorInfo:
     host: str
     port: int
     last_update: float = field(default_factory=time.time)
-    capabilities: Set[str] = field(default_factory=set)
+    capabilities: set = field(default_factory=set)
     vector_clock: VectorClock = None
-    emergency_context: Optional[EmergencyContext] = None
+    emergency_context: EmergencyContext = None
     
     def __post_init__(self):
         if self.vector_clock is None:
@@ -61,18 +64,18 @@ class JobInfo:
     """Job submission information"""
     job_id: UUID
     data: dict
-    capabilities: Set[str] = field(default_factory=set)
-    emergency_context: Optional[EmergencyContext] = None
-    vector_clock: Optional[dict] = None
-    result_addr: Optional[str] = None
+    capabilities: set = field(default_factory=set)
+    emergency_context: EmergencyContext = None
+    vector_clock: dict = None
+    result_addr: str = None
 
 @dataclass
 class QueuedJob:
     """Job waiting for execution"""
     job_info: JobInfo
-    wait_for: Set[UUID] = field(default_factory=set)
+    wait_for: set = field(default_factory=set)
     submitted_at: float = field(default_factory=time.time)
-    causal_message: Optional[CausalMessage] = None
+    causal_message: CausalMessage = None
 
 class ExecutorBroker:
     """
@@ -85,27 +88,27 @@ class ExecutorBroker:
     - Causal consistency for job ordering
     """
     
-    def __init__(self, broker_id: str = None):
+    def __init__(self, broker_id=None):
         """Initialize ExecutorBroker with vector clock coordination"""
         self.broker_id = broker_id or str(uuid4())
         self.vector_clock = VectorClock(self.broker_id)
         
         # Executor management
-        self.executors: Dict[UUID, ExecutorInfo] = {}
+        self.executors = {}
         self.executor_lock = threading.RLock()
         
         # Job management  
         self.queued_jobs = Queue()
-        self.completed_jobs: Set[UUID] = set()
+        self.completed_jobs = set()
         self.completed_lock = threading.RLock()
         
         # Add job tracking
-        self.job_to_executor: Dict[UUID, UUID] = {}  # job_id -> executor_id
-        self.executor_to_jobs: Dict[UUID, Set[UUID]] = defaultdict(set)  # executor_id -> {job_ids}
-        self.job_states: Dict[UUID, str] = {}  # job_id -> state
+        self.job_to_executor = {}  # job_id -> executor_id
+        self.executor_to_jobs = defaultdict(set)  # executor_id -> {job_ids}
+        self.job_states = {}  # job_id -> state
         
         # Emergency and consistency management
-        self.current_emergency: Optional[EmergencyContext] = None
+        self.current_emergency = None
         self.message_handler = MessageHandler(self.broker_id)
         self.consistency_manager = CausalConsistencyManager(self.broker_id)
         
@@ -115,8 +118,7 @@ class ExecutorBroker:
         
         LOG.info(f"ExecutorBroker {self.broker_id} initialized")
     
-    def register_executor(self, executor_id: UUID, host: str, port: int, 
-                         capabilities: Set[str] = None) -> bool:
+    def register_executor(self, executor_id, host, port, capabilities=None):
         """
         Register executor with vector clock synchronization
         
@@ -150,9 +152,7 @@ class ExecutorBroker:
         
         return True
     
-    def heartbeat_executor(self, executor_id: UUID, capabilities: Set[str] = None,
-                          vector_clock_state: dict = None, 
-                          emergency_context: EmergencyContext = None) -> bool:
+    def heartbeat_executor(self, executor_id, capabilities=None, vector_clock_state=None, emergency_context=None):
         """
         Process executor heartbeat with vector clock and emergency updates
         
@@ -189,7 +189,7 @@ class ExecutorBroker:
             LOG.debug(f"Heartbeat processed for executor {executor_id}")
             return True
     
-    def submit_job(self, job_info: JobInfo, wait_for: Set[UUID] = None) -> UUID:
+    def submit_job(self, job_info, wait_for=None):
         """
         Submit job with vector clock ordering and emergency prioritization
         
@@ -306,8 +306,7 @@ class ExecutorBroker:
             self.scheduler_thread.join(timeout=5.0)
         LOG.info(f"ExecutorBroker {self.broker_id} stopped")
     
-    def _find_capable_executor(self, required_caps: Set[str], 
-                              emergency: bool = False) -> Optional[ExecutorInfo]:
+    def _find_capable_executor(self, required_caps, emergency=False):
         """
         Find executor capable of handling job with given capabilities
         

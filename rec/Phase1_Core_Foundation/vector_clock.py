@@ -8,11 +8,10 @@ This is the heart of the thesis - implements vector clock-based
 causal consistency with emergency awareness.
 """
 
-from typing import Dict, List, Optional
 from enum import Enum
 import logging
 
-# Configure logging
+# Setup simple logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ class VectorClock:
     - compare(): Determine causal relationship between events
     """
     
-    def __init__(self, node_id: str):
+    def __init__(self, node_id):
         """
         Initialize vector clock for a node
         
@@ -50,16 +49,19 @@ class VectorClock:
         self.clock = {}  # Dictionary storing timestamp per node
         logger.info(f"Vector clock initialized for node: {node_id}")
 
-    def tick(self) -> None:
+    def tick(self):
         """
         Increment local timestamp (Lamport Rule 1)
         
         Called before any local event to advance logical time.
         This ensures local events have increasing timestamps.
         """
-        self.clock[self.node_id] = self.clock.get(self.node_id, 0) + 1
+        # Get current time for this node, or 0 if not set yet
+        current_time = self.clock.get(self.node_id, 0)
+        # Increment by 1
+        self.clock[self.node_id] = current_time + 1
 
-    def update(self, incoming_clock: Dict[str, int]) -> None:
+    def update(self, incoming_clock):
         """
         Update vector clock with incoming timestamps (Lamport Rule 2)
         
@@ -72,16 +74,19 @@ class VectorClock:
         if not isinstance(incoming_clock, dict):
             raise TypeError("Incoming clock must be a dictionary")
             
-        # Merge clocks: take maximum timestamp for each node
+        # Go through each node in the incoming clock
         for node_id, timestamp in incoming_clock.items():
             if not isinstance(timestamp, int) or timestamp < 0:
                 raise ValueError(f"Invalid timestamp for node {node_id}: {timestamp}")
-            self.clock[node_id] = max(self.clock.get(node_id, 0), timestamp)
+            
+            # Take the maximum between our time and incoming time for each node
+            our_time = self.clock.get(node_id, 0)
+            self.clock[node_id] = max(our_time, timestamp)
         
-        # Increment local time after merge
+        # Increment our local time after merging
         self.tick()
 
-    def compare(self, other_clock) -> str:
+    def compare(self, other_clock):
         """
         Compare this vector clock with another to determine causal relationship
         
@@ -103,22 +108,23 @@ class VectorClock:
             raise TypeError("Can only compare with VectorClock or dict")
 
         # Get all node IDs from both clocks
-        all_nodes = set(self.clock.keys()) | set(other_dict.keys())
+        all_nodes = set(self.clock.keys())
+        all_nodes.update(set(other_dict.keys()))
         
         self_less = False  # True if this clock is less in any dimension
         other_less = False  # True if other clock is less in any dimension
         
         # Compare timestamps for each node
         for node_id in all_nodes:
-            self_time = self.clock.get(node_id, 0)
-            other_time = other_dict.get(node_id, 0)
+            our_time = self.clock.get(node_id, 0)
+            their_time = other_dict.get(node_id, 0)
             
-            if self_time < other_time:
+            if our_time < their_time:
                 self_less = True
-            elif self_time > other_time:
+            elif our_time > their_time:
                 other_less = True
         
-        # Determine causal relationship
+        # Figure out the relationship
         if self_less and not other_less:
             return "before"  # This clock causally precedes other
         elif other_less and not self_less:
@@ -126,7 +132,7 @@ class VectorClock:
         else:
             return "concurrent"  # Events are concurrent
     
-    def to_dict(self) -> Dict[str, int]:
+    def to_dict(self):
         """
         Convert vector clock to dictionary representation
         
@@ -135,7 +141,7 @@ class VectorClock:
         """
         return dict(self.clock)
     
-    def copy(self) -> 'VectorClock':
+    def copy(self):
         """
         Create a copy of this vector clock
         
@@ -146,7 +152,7 @@ class VectorClock:
         new_clock.clock = dict(self.clock)
         return new_clock
     
-    def get_time_for_node(self, node_id: str) -> int:
+    def get_time_for_node(self, node_id):
         """
         Get timestamp for a specific node
         
@@ -158,11 +164,11 @@ class VectorClock:
         """
         return self.clock.get(node_id, 0)
     
-    def __str__(self) -> str:
+    def __str__(self):
         """String representation of vector clock"""
         return f"VectorClock({self.node_id}): {self.clock}"
     
-    def __repr__(self) -> str:
+    def __repr__(self):
         """Detailed string representation"""
         return f"VectorClock(node_id='{self.node_id}', clock={self.clock})"
 
@@ -174,7 +180,7 @@ class EmergencyContext:
     for emergency-aware distributed coordination.
     """
     
-    def __init__(self, emergency_type: str, level: EmergencyLevel, location: Optional[str] = None):
+    def __init__(self, emergency_type, level, location=None):
         """
         Initialize emergency context
         
@@ -188,19 +194,19 @@ class EmergencyContext:
         self.location = location
         self.timestamp = None  # Set when emergency is declared
         
-    def is_critical(self) -> bool:
+    def is_critical(self):
         """Check if emergency is high priority (HIGH or CRITICAL level)"""
         return self.level in (EmergencyLevel.HIGH, EmergencyLevel.CRITICAL)
     
-    def get_priority_score(self) -> int:
+    def get_priority_score(self):
         """Get numeric priority score for emergency"""
         return self.level.value
     
-    def __str__(self) -> str:
+    def __str__(self):
         """String representation of emergency context"""
         return f"Emergency({self.emergency_type}/{self.level.name})"
 
-def create_emergency(emergency_type: str, level, location: Optional[str] = None) -> EmergencyContext:
+def create_emergency(emergency_type, level, location=None):
     """
     Create emergency context with flexible level specification
     

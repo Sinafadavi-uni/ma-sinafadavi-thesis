@@ -21,11 +21,11 @@ import threading
 import logging
 import json
 import traceback
-from typing import Dict, Optional, List, Set, Any, Tuple, Union
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor, Future
+from typing import Any, Dict, List, Optional, Set
 import queue
 
 # Import UCP base classes (simulated for thesis)
@@ -68,13 +68,13 @@ except ImportError:
 # Phase 1: Foundation
 phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
 sys.path.insert(0, phase1_path)
-from vector_clock import VectorClock, create_emergency
-from causal_consistency import CausalConsistencyManager
+from rec.Phase1_Core_Foundation.vector_clock import VectorClock, create_emergency
+from rec.Phase1_Core_Foundation.causal_consistency import CausalConsistencyManager
 
 # Phase 3: Core Implementation
 phase3_path = os.path.join(os.path.dirname(__file__), '..', 'Phase3_Core_Implementation')
 sys.path.insert(0, phase3_path)
-from enhanced_vector_clock_executor import ExecutorCapabilities, CausalJob
+from rec.Phase3_Core_Implementation.enhanced_vector_clock_executor import ExecutorCapabilities, CausalJob
 
 LOG = logging.getLogger(__name__)
 
@@ -132,13 +132,13 @@ class ProductionVectorClockExecutor(Executor):
     """
     
     def __init__(self, 
-                 host: Union[str, List[str]],
+                 host,
                  port: int,
                  rootdir: str,
                  executor_id: str,
                  mode: ProductionMode = ProductionMode.PRODUCTION,
-                 capabilities: Optional[ExecutorCapabilities] = None,
-                 ucp_config: Optional[UCPConfiguration] = None):
+                 capabilities=None,
+                 ucp_config=None):
         """Initialize production vector clock executor"""
         
         # Initialize UCP base
@@ -163,9 +163,9 @@ class ProductionVectorClockExecutor(Executor):
         self.integration_level = UCPIntegrationLevel.FULL
         
         # Job management
-        self.active_jobs: Dict[str, CausalJob] = {}
-        self.job_results: Dict[str, Any] = {}
-        self.submitted_results: Set[str] = set()  # FCFS tracking
+        self.active_jobs = {}
+        self.job_results = {}
+        self.submitted_results = set()  # FCFS tracking
         self.job_queue = queue.PriorityQueue()
         
         # Threading and concurrency
@@ -173,23 +173,23 @@ class ProductionVectorClockExecutor(Executor):
             max_workers=self.ucp_config.max_concurrent_jobs,
             thread_name_prefix=f"prod-executor-{executor_id}"
         )
-        self.background_threads: List[threading.Thread] = []
+        self.background_threads = []
         self.should_exit = False
         self.state_lock = threading.RLock()
         
         # Production monitoring
         self.metrics = ProductionMetrics()
-        self.performance_data: List[Dict[str, Any]] = []
+        self.performance_data = []
         
         # UCP integration
-        self.ucp_endpoints: Set[str] = set()
-        self.peer_executors: Dict[str, Dict[str, Any]] = {}
-        self.broker_connections: Dict[str, Any] = {}
+        self.ucp_endpoints = set()
+        self.peer_executors = {}
+        self.broker_connections = {}
         
         LOG.info(f"ProductionVectorClockExecutor {executor_id} initialized "
                 f"in {mode.value} mode with {self.integration_level.value} UCP integration")
     
-    def start(self) -> None:
+    def start(self):
         """Start production executor with full UCP integration"""
         with self.state_lock:
             if self.is_running:
@@ -223,7 +223,7 @@ class ProductionVectorClockExecutor(Executor):
                 LOG.error(traceback.format_exc())
                 raise
     
-    def stop(self) -> None:
+    def stop(self):
         """Stop production executor gracefully"""
         with self.state_lock:
             if not self.is_running:
@@ -235,7 +235,7 @@ class ProductionVectorClockExecutor(Executor):
             self.is_running = False
             
             # Stop job processing
-            self.executor_pool.shutdown(wait=True, timeout=10.0)
+            self.executor_pool.shutdown(wait=True)
             
             # Stop background threads
             for thread in self.background_threads:
@@ -248,7 +248,7 @@ class ProductionVectorClockExecutor(Executor):
             
             LOG.info(f"Production executor {self.executor_id} stopped")
     
-    def submit_job(self, job: JobInfo, emergency_context: Any = None) -> bool:
+    def submit_job(self, job, emergency_context=None):
         """
         Submit job for execution with vector clock coordination
         
@@ -294,7 +294,7 @@ class ProductionVectorClockExecutor(Executor):
             LOG.info(f"Job {job.job_id} submitted to executor {self.executor_id}")
             return True
     
-    def handle_result_submission(self, job_id: str, result: Any) -> bool:
+    def handle_result_submission(self, job_id, result):
         """
         Handle result submission with FCFS policy
         
@@ -329,7 +329,7 @@ class ProductionVectorClockExecutor(Executor):
             LOG.info(f"Result for job {job_id} accepted by executor {self.executor_id}")
             return True
     
-    def set_emergency_mode(self, emergency_type: str, emergency_level: str) -> None:
+    def set_emergency_mode(self, emergency_type, emergency_level):
         """Set emergency mode with context"""
         with self.state_lock:
             self.emergency_mode = True
@@ -340,7 +340,7 @@ class ProductionVectorClockExecutor(Executor):
             
             LOG.warning(f"Emergency mode activated: {emergency_type} level {emergency_level}")
     
-    def clear_emergency_mode(self) -> None:
+    def clear_emergency_mode(self):
         """Clear emergency mode"""
         with self.state_lock:
             self.emergency_mode = False
@@ -349,18 +349,31 @@ class ProductionVectorClockExecutor(Executor):
             
             LOG.info("Emergency mode cleared")
     
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self):
         """Get comprehensive executor status"""
         with self.state_lock:
             uptime = time.time() - self.metrics.uptime_start if self.is_running else 0.0
             
+            # Safe serialization for emergency context
+            if self.current_emergency is not None:
+                try:
+                    current_emergency = {
+                        "type": getattr(self.current_emergency, "emergency_type", None),
+                        "level": getattr(getattr(self.current_emergency, "level", None), "name", None),
+                        "location": getattr(self.current_emergency, "location", None),
+                    }
+                except Exception:
+                    current_emergency = str(self.current_emergency)
+            else:
+                current_emergency = None
+
             return {
                 "executor_id": self.executor_id,
                 "mode": self.mode.value,
                 "integration_level": self.integration_level.value,
                 "is_running": self.is_running,
                 "emergency_mode": self.emergency_mode,
-                "current_emergency": self.current_emergency.to_dict() if self.current_emergency else None,
+                "current_emergency": current_emergency,
                 "vector_clock": self.vector_clock.clock.copy(),
                 "capabilities": {
                     "emergency_capable": self.capabilities.emergency_capable,
@@ -388,7 +401,7 @@ class ProductionVectorClockExecutor(Executor):
                 }
             }
     
-    def sync_vector_clock(self, peer_clock: Dict[str, int]) -> None:
+    def sync_vector_clock(self, peer_clock):
         """Synchronize vector clock with peer"""
         with self.state_lock:
             old_clock = self.vector_clock.clock.copy()
@@ -398,7 +411,7 @@ class ProductionVectorClockExecutor(Executor):
                 self.metrics.vector_clock_syncs += 1
                 LOG.debug(f"Vector clock synchronized: {old_clock} -> {self.vector_clock.clock}")
     
-    def register_peer_executor(self, peer_id: str, peer_info: Dict[str, Any]) -> None:
+    def register_peer_executor(self, peer_id, peer_info):
         """Register peer executor for coordination"""
         with self.state_lock:
             self.peer_executors[peer_id] = {
@@ -407,7 +420,7 @@ class ProductionVectorClockExecutor(Executor):
             }
             LOG.info(f"Peer executor {peer_id} registered")
     
-    def heartbeat(self) -> Dict[str, Any]:
+    def heartbeat(self):
         """Production heartbeat with full status"""
         with self.state_lock:
             self.metrics.last_heartbeat = time.time()
