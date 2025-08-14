@@ -438,6 +438,12 @@ class VectorClockBroker(ExecutorBroker):
         
         LOG.info(f"Coordination sync worker stopped for broker {self.broker_id}")
 
+    def _get_datastore_mappings(self):
+        """Get datastore location mappings for metadata sync"""
+        # Return empty dict if no datastores registered
+        # This can be extended when datastore integration is needed
+        return {}
+
     def get_metadata_snapshot(self):
         """Create a complete metadata snapshot for synchronization"""
         with self.coordination_lock:
