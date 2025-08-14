@@ -21,11 +21,13 @@ Based on distributed systems fault tolerance with enhancements for:
 import time
 import threading
 import logging
+import random
 from typing import Dict, Set, Optional, List, Tuple
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 from enum import Enum
 from abc import ABC, abstractmethod
+from collections import defaultdict
 
 # Import Phase 1 foundation
 import sys
@@ -170,6 +172,10 @@ class SimpleRecoveryManager:
         self.recovery_strategy = SimpleRecoveryStrategy()
         self.recovery_queue: List[RecoveryAction] = []
         self.recovery_lock = threading.RLock()
+        
+        # Add broker reference for job redeployment
+        self.associated_broker = None
+        self.redeployment_history: Dict[UUID, List[str]] = defaultdict(list)
         
         # Emergency and consistency management
         self.current_emergency: Optional[EmergencyContext] = None
@@ -377,8 +383,8 @@ class SimpleRecoveryManager:
         LOG.info(f"Scheduled {len(recovery_actions)} recovery actions for node {node_info.node_id}")
     
     def _health_monitor(self) -> None:
-        """Background health monitoring thread"""
-        LOG.info(f"Health monitor started for manager {self.manager_id}")
+        """Enhanced health monitor with job redeployment"""
+        LOG.info(f"Enhanced health monitor started for manager {self.manager_id}")
         
         while not self.should_exit:
             try:
@@ -387,34 +393,36 @@ class SimpleRecoveryManager:
                 with self.node_lock:
                     for node_id, node_info in self.monitored_nodes.items():
                         if node_info.status == NodeStatus.HEALTHY:
-                            # Check for heartbeat timeout
                             time_since_heartbeat = current_time - node_info.last_heartbeat
                             
-                            if time_since_heartbeat > self.heartbeat_timeout:
-                                # Mark as suspected first
-                                if time_since_heartbeat > self.heartbeat_timeout * 1.5:
-                                    node_info.status = NodeStatus.FAILED
-                                    node_info.failure_count += 1
-                                    self.vector_clock.tick()
-                                    
-                                    LOG.warning(f"Node {node_id} failed (heartbeat timeout)")
-                                    
-                                    # Schedule recovery
-                                    if self.recovery_strategy.should_recover(node_info):
-                                        self._schedule_recovery(node_info)
+                            if time_since_heartbeat > self.heartbeat_timeout * 1.5:
+                                # Mark as failed
+                                node_info.status = NodeStatus.FAILED
+                                node_info.failure_count += 1
+                                self.vector_clock.tick()
                                 
-                                elif node_info.status == NodeStatus.HEALTHY:
-                                    node_info.status = NodeStatus.SUSPECTED
-                                    LOG.debug(f"Node {node_id} suspected (heartbeat delay)")
+                                LOG.warning(f"Node {node_id} failed (heartbeat timeout)")
+                                
+                                # Handle executor failure with job redeployment
+                                if node_info.node_type == "executor":
+                                    self.handle_executor_failure(node_id)
+                                
+                                # Schedule recovery
+                                if self.recovery_strategy.should_recover(node_info):
+                                    self._schedule_recovery(node_info)
+                            
+                            elif time_since_heartbeat > self.heartbeat_timeout:
+                                node_info.status = NodeStatus.SUSPECTED
+                                LOG.debug(f"Node {node_id} suspected (heartbeat delay)")
                 
-                time.sleep(5.0)  # Check every 5 seconds
+                time.sleep(5.0)
                 
             except Exception as e:
                 LOG.error(f"Error in health monitor: {e}")
                 time.sleep(1.0)
         
         LOG.info(f"Health monitor stopped for manager {self.manager_id}")
-    
+
     def _recovery_processor(self) -> None:
         """Background recovery processing thread"""
         LOG.info(f"Recovery processor started for manager {self.manager_id}")
@@ -496,6 +504,108 @@ class SimpleRecoveryManager:
         LOG.warning(f"Performing emergency failover for node {node_id}")
         time.sleep(0.1)  # Simulate failover time
         return True
+
+    def set_broker(self, broker: 'ExecutorBroker') -> None:
+        """Associate recovery manager with a broker"""
+        self.associated_broker = broker
+        LOG.info(f"Recovery manager associated with broker {broker.broker_id}")
+    
+    def handle_executor_failure(self, executor_id: str) -> None:
+        """Handle complete executor failure with job redeployment"""
+        if not self.associated_broker:
+            LOG.error("No broker associated for job redeployment")
+            return
+        
+        # Get all jobs on failed executor
+        orphaned_jobs = self.get_orphaned_jobs(executor_id)
+        
+        if orphaned_jobs:
+            LOG.warning(f"Found {len(orphaned_jobs)} orphaned jobs on failed executor {executor_id}")
+            
+            # Redeploy each job
+            for job_id in orphaned_jobs:
+                self.redeploy_job(job_id, executor_id)
+    
+    def get_orphaned_jobs(self, failed_executor_id: str) -> List[UUID]:
+        """Get all jobs that were running on failed executor"""
+        if not self.associated_broker:
+            return []
+        
+        with self.associated_broker.executor_lock:
+            return list(self.associated_broker.executor_to_jobs.get(failed_executor_id, set()))
+    
+    def redeploy_job(self, job_id: UUID, failed_executor_id: str) -> bool:
+        """Redeploy a single job to a new executor"""
+        if not self.associated_broker:
+            return False
+        
+        try:
+            # Record redeployment attempt
+            self.redeployment_history[job_id].append(failed_executor_id)
+            
+            # Get job info from broker
+            job_info = self.get_job_info(job_id)
+            if not job_info:
+                LOG.error(f"Cannot find job info for {job_id}")
+                return False
+            
+            # Find new capable executor
+            with self.associated_broker.executor_lock:
+                # Exclude failed executor
+                available_executors = [
+                    ex for ex in self.associated_broker.executors.values()
+                    if ex.id != failed_executor_id and 
+                    job_info.capabilities.issubset(ex.capabilities)
+                ]
+            
+            if not available_executors:
+                LOG.error(f"No capable executor found for job {job_id}")
+                # Re-queue the job for later
+                self.associated_broker.queued_jobs.put(
+                    QueuedJob(job_info=job_info, wait_for=set())
+                )
+                return False
+            
+            # Select new executor
+            new_executor = random.choice(available_executors)
+            
+            # Update job tracking
+            with self.associated_broker.executor_lock:
+                # Remove from failed executor
+                self.associated_broker.executor_to_jobs[failed_executor_id].discard(job_id)
+                # Assign to new executor
+                self.associated_broker.job_to_executor[job_id] = new_executor.id
+                self.associated_broker.executor_to_jobs[new_executor.id].add(job_id)
+                self.associated_broker.job_states[job_id] = "redeploying"
+            
+            # Execute on new executor
+            result = self.associated_broker._execute_job_on_executor(job_info, new_executor)
+            
+            LOG.info(f"Job {job_id} redeployed from {failed_executor_id} to {new_executor.id}")
+            return result == job_id
+            
+        except Exception as e:
+            LOG.error(f"Failed to redeploy job {job_id}: {e}")
+            return False
+    
+    def get_job_info(self, job_id: UUID) -> Optional['JobInfo']:
+        """Retrieve job info from broker's distributed jobs"""
+        if not self.associated_broker:
+            return None
+        
+        # Check in distributed jobs if broker is VectorClockBroker
+        if hasattr(self.associated_broker, 'distributed_jobs'):
+            job_coord = self.associated_broker.distributed_jobs.get(job_id)
+            if job_coord:
+                # Reconstruct JobInfo from coordination data
+                from executorbroker import JobInfo
+                return JobInfo(
+                    job_id=job_id,
+                    data={"redeployed": True},  # Placeholder - should store actual data
+                    capabilities=set(),  # Should be stored in coordination
+                    emergency_context=None
+                )
+        return None
 
 # Demo and testing functions
 def demo_recovery_system():

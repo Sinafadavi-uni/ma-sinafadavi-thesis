@@ -48,6 +48,18 @@ from executorbroker import ExecutorBroker, JobInfo, ExecutorInfo
 
 LOG = logging.getLogger(__name__)
 
+@dataclass
+class BrokerMetadata:
+    """Complete broker metadata for synchronization"""
+    broker_id: str
+    vector_clock: Dict[str, int]
+    job_registry: Dict[UUID, DistributedJobCoordination]
+    executor_registry: Dict[UUID, ExecutorInfo]
+    datastore_locations: Dict[str, List[str]]  # data_key -> [datastore_ids]
+    pending_jobs: List[UUID]
+    completed_jobs: Set[UUID]
+    last_sync_time: float = field(default_factory=time.time)
+
 class BrokerCoordinationState(Enum):
     """Broker coordination state"""
     INITIALIZING = "initializing"
@@ -392,16 +404,28 @@ class VectorClockBroker(ExecutorBroker):
         return assigned_broker
     
     def _coordination_sync_worker(self) -> None:
-        """Background worker for cross-broker coordination"""
-        LOG.info(f"Coordination sync worker started for broker {self.broker_id}")
+        """Enhanced background worker with full metadata sync"""
+        LOG.info(f"Enhanced coordination sync worker started for broker {self.broker_id}")
         
         while not self.should_exit and self.coordination_state == BrokerCoordinationState.ACTIVE:
             try:
-                # Synchronize vector clocks with all peer brokers
+                # Get local metadata snapshot
+                local_metadata = self.get_metadata_snapshot()
+                
+                # Sync with all peer brokers
                 for peer_id, peer_broker in self.peer_brokers.items():
-                    if hasattr(peer_broker, 'vector_clock'):
-                        peer_clock = peer_broker.vector_clock.clock.copy()
-                        self.sync_vector_clock(peer_clock, peer_id)
+                    try:
+                        # Exchange metadata bidirectionally
+                        peer_metadata = peer_broker.get_metadata_snapshot()
+                        
+                        # Sync both ways
+                        self.sync_metadata_with_peer(peer_metadata)
+                        peer_broker.sync_metadata_with_peer(local_metadata)
+                        
+                        LOG.debug(f"Full metadata sync completed with broker {peer_id}")
+                        
+                    except Exception as e:
+                        LOG.error(f"Metadata sync failed with broker {peer_id}: {e}")
                 
                 # Update coordination state
                 self.coordination_state = BrokerCoordinationState.ACTIVE
@@ -414,6 +438,68 @@ class VectorClockBroker(ExecutorBroker):
                 time.sleep(1.0)
         
         LOG.info(f"Coordination sync worker stopped for broker {self.broker_id}")
+
+    def get_metadata_snapshot(self) -> BrokerMetadata:
+        """Create a complete metadata snapshot for synchronization"""
+        with self.coordination_lock:
+            return BrokerMetadata(
+                broker_id=self.broker_id,
+                vector_clock=self.vector_clock.clock.copy(),
+                job_registry=dict(self.distributed_jobs),
+                executor_registry=dict(self.executors),
+                datastore_locations=self._get_datastore_mappings(),
+                pending_jobs=list(self.queued_jobs.queue),
+                completed_jobs=self.completed_jobs.copy(),
+                last_sync_time=time.time()
+            )
+
+    def sync_metadata_with_peer(self, peer_metadata: BrokerMetadata) -> None:
+        """Synchronize complete metadata with peer broker"""
+        with self.coordination_lock:
+            # 1. Sync vector clocks
+            self.vector_clock.update(peer_metadata.vector_clock)
+            
+            # 2. Merge job registries (union of jobs)
+            for job_id, job_coord in peer_metadata.job_registry.items():
+                if job_id not in self.distributed_jobs:
+                    self.distributed_jobs[job_id] = job_coord
+                else:
+                    # Resolve conflicts using vector clock comparison
+                    existing_vc = self.distributed_jobs[job_id].vector_clock_snapshot
+                    incoming_vc = job_coord.vector_clock_snapshot
+                    if self._is_causally_after(incoming_vc, existing_vc):
+                        self.distributed_jobs[job_id] = job_coord
+            
+            # 3. Merge executor registries
+            for exec_id, exec_info in peer_metadata.executor_registry.items():
+                if exec_id not in self.executors:
+                    self.executors[exec_id] = exec_info
+                else:
+                    # Keep most recent based on last_update
+                    if exec_info.last_update > self.executors[exec_id].last_update:
+                        self.executors[exec_id] = exec_info
+            
+            # 4. Merge datastore locations
+            for data_key, locations in peer_metadata.datastore_locations.items():
+                if data_key not in self.datastore_mappings:
+                    self.datastore_mappings[data_key] = []
+                # Union of locations
+                self.datastore_mappings[data_key] = list(
+                    set(self.datastore_mappings[data_key]) | set(locations)
+                )
+            
+            # 5. Update completed jobs (union)
+            self.completed_jobs.update(peer_metadata.completed_jobs)
+            
+            LOG.info(f"Metadata synchronized with broker {peer_metadata.broker_id}")
+
+    def _is_causally_after(self, vc1: Dict[str, int], vc2: Dict[str, int]) -> bool:
+        """Check if vc1 is causally after vc2"""
+        for node_id in set(vc1.keys()) | set(vc2.keys()):
+            if vc1.get(node_id, 0) < vc2.get(node_id, 0):
+                return False
+        return any(vc1.get(node_id, 0) > vc2.get(node_id, 0) 
+                   for node_id in set(vc1.keys()) | set(vc2.keys()))
 
 # Demo and testing functions
 def demo_vector_clock_broker():

@@ -26,6 +26,7 @@ from uuid import UUID, uuid4
 from queue import Queue, Empty
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+from collections import defaultdict
 import logging
 
 # Import Phase 1 foundation
@@ -97,6 +98,11 @@ class ExecutorBroker:
         self.queued_jobs = Queue()
         self.completed_jobs: Set[UUID] = set()
         self.completed_lock = threading.RLock()
+        
+        # Add job tracking
+        self.job_to_executor: Dict[UUID, UUID] = {}  # job_id -> executor_id
+        self.executor_to_jobs: Dict[UUID, Set[UUID]] = defaultdict(set)  # executor_id -> {job_ids}
+        self.job_states: Dict[UUID, str] = {}  # job_id -> state
         
         # Emergency and consistency management
         self.current_emergency: Optional[EmergencyContext] = None
@@ -337,7 +343,7 @@ class ExecutorBroker:
     
     def _execute_job_on_executor(self, job_info: JobInfo, executor: ExecutorInfo) -> UUID:
         """
-        Execute job on specific executor
+        Enhanced job execution with tracking
         
         Args:
             job_info: Job to execute
@@ -349,6 +355,14 @@ class ExecutorBroker:
         # Synchronize vector clocks before execution
         self.vector_clock.update(executor.vector_clock.clock)
         self.vector_clock.tick()
+        
+        # Track job assignment
+        with self.executor_lock:
+            self.job_to_executor[job_info.job_id] = executor.id
+            self.executor_to_jobs[executor.id].add(job_info.job_id)
+            self.job_states[job_info.job_id] = "executing"
+        
+        LOG.info(f"Job {job_info.job_id} assigned to executor {executor.id}")
         
         # Create execution message
         execution_msg = CausalMessage(

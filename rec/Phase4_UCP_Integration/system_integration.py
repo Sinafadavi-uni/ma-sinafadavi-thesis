@@ -28,6 +28,7 @@ import json
 # Import all previous phases
 import sys
 import os
+from datastore_replication import DatastoreReplicationManager
 
 # Phase 1: Foundation
 phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
@@ -113,6 +114,9 @@ class SystemIntegrationFramework:
         self.emergency_manager: Optional[EmergencyIntegrationManager] = None
         self.recovery_manager: Optional[SimpleRecoveryManager] = None
         
+        # Add datastore replication manager
+        self.datastore_replication_manager: Optional[DatastoreReplicationManager] = None
+        
         # System metrics and monitoring
         self.system_metrics = {
             "startup_time": None,
@@ -159,6 +163,12 @@ class SystemIntegrationFramework:
         self._register_component(manager.manager_id, "recovery_manager", manager)
         LOG.info("Recovery manager registered")
     
+    def register_datastore_replication(self, replication_manager: DatastoreReplicationManager) -> None:
+        """Register datastore replication manager"""
+        self.datastore_replication_manager = replication_manager
+        self._register_component("datastore_replication", "replication_manager", replication_manager)
+        LOG.info("Datastore replication manager registered")
+    
     def start_system(self) -> bool:
         """
         Start the complete integrated system
@@ -185,6 +195,11 @@ class SystemIntegrationFramework:
             if self.recovery_manager:
                 self.recovery_manager.start()
                 self._update_component_status(self.recovery_manager.manager_id, "active")
+            
+            # Start datastore replication manager
+            if self.datastore_replication_manager:
+                self.datastore_replication_manager.start()
+                self._update_component_status("datastore_replication", "active")
             
             # Start registered components
             for component_id, component in self.registered_components.items():
@@ -266,7 +281,8 @@ class SystemIntegrationFramework:
             "emergency_response": False,
             "causal_consistency": False,
             "fcfs_policy": False,
-            "distributed_execution": False
+            "distributed_execution": False,
+            "datastore_replication": False  # New check
         }
         
         try:
@@ -306,6 +322,14 @@ class SystemIntegrationFramework:
                 if comp.component_type == "executor"
             ]
             compliance_checks["distributed_execution"] = len(executor_components) > 0
+            
+            # Check datastore replication
+            if self.datastore_replication_manager:
+                repl_status = self.datastore_replication_manager.get_replication_status()
+                compliance_checks["datastore_replication"] = (
+                    repl_status["datastores"]["available"] > 0 and
+                    repl_status["strategy"] != "none"
+                )
             
             # Determine compliance level
             passed_checks = sum(1 for check in compliance_checks.values() if check)
