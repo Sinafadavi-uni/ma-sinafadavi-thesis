@@ -91,6 +91,10 @@ class ExecutorInternalJobInfo:
 
     def __init__(self, job_info: JobInfo, job: "ExecutorJob") -> None:
         try:
+            # Initialize maps before any conditional mutation
+            self.job_data = {}
+            self.named_data = {}
+
             if type(job_info.wasm_bin) is str:
                 self.wasm_bin = (
                     job_info.wasm_bin,
@@ -110,6 +114,7 @@ class ExecutorInternalJobInfo:
             elif type(job_info.stdin) is tuple:
                 if job_info.stdin[0] != "":
                     if job_info.stdin_is_named:
+                        # Record mapping for consistency; may be overwritten by later assignment
                         self.job_data[job_info.stdin[0]] = job_info.stdin[1]
                     else:
                         self.job_data[job.job_data_name(job_info.stdin[0])] = (

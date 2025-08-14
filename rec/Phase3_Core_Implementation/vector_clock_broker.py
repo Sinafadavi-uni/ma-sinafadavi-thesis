@@ -125,6 +125,43 @@ class VectorClockBroker(ExecutorBroker):
         """
         self.peer_brokers[peer_id] = peer_broker
         LOG.info(f"Registered peer broker: {peer_id}")
+
+    # --- FCFS result handling at broker layer ---
+    def record_job_submission(self, job_id: UUID, submitter_id: str = None) -> bool:
+        """Record a job submission under FCFS policy at the broker.
+
+        This allows the broker to later enforce FCFS on result submissions
+        even if results arrive from multiple executors after failover.
+
+        Returns True if accepted (first submission), False if duplicate.
+        """
+        # Ensure vector clock advances for this event
+        self.vector_clock.tick()
+        op = {
+            "operation_id": f"op-job-{job_id}",
+            "operation_type": "job_submission",
+            "vector_clock": self.vector_clock.clock.copy(),
+            "job_id": str(job_id),
+            "submitter_id": submitter_id or self.broker_id,
+        }
+        return self.fcfs_policy.apply_policy(op, context={})
+
+    def handle_result_submission(self, job_id: UUID, result: dict, executor_id: str) -> bool:
+        """Apply broker-side FCFS gate for result submissions.
+
+        Returns True for first accepted result, False for duplicates (FCFS).
+        """
+        # Ensure vector clock advances for this event
+        self.vector_clock.tick()
+        op = {
+            "operation_id": f"op-res-{job_id}",
+            "operation_type": "result_submission",
+            "vector_clock": self.vector_clock.clock.copy(),
+            "job_id": str(job_id),
+            "result": result,
+            "executor_id": executor_id,
+        }
+        return self.fcfs_policy.apply_policy(op, context={})
     
     def submit_distributed_job(self, job_info, preferred_broker=None):
         """

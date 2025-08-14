@@ -28,7 +28,14 @@ import json
 # Import all previous phases
 import sys
 import os
-from datastore_replication import DatastoreReplicationManager
+# Prefer package-relative import; fallback to absolute for legacy execution
+try:
+    from .datastore_replication import DatastoreReplicationManager
+except Exception:  # noqa: BLE001 - broad for compatibility in different entrypoints
+    try:
+        from rec.Phase4_UCP_Integration.datastore_replication import DatastoreReplicationManager
+    except Exception:  # Final fallback to local name resolution
+        from datastore_replication import DatastoreReplicationManager
 
 # Phase 1: Foundation
 phase1_path = os.path.join(os.path.dirname(__file__), '..', 'Phase1_Core_Foundation')
@@ -50,7 +57,13 @@ from vector_clock_broker import VectorClockBroker
 from emergency_integration import EmergencyIntegrationManager
 
 # Phase 4: UCP Integration
-from multi_broker_coordinator import MultiBrokerCoordinator
+try:
+    from .multi_broker_coordinator import MultiBrokerCoordinator
+except Exception:
+    try:
+        from rec.Phase4_UCP_Integration.multi_broker_coordinator import MultiBrokerCoordinator
+    except Exception:
+        from multi_broker_coordinator import MultiBrokerCoordinator
 
 LOG = logging.getLogger(__name__)
 
@@ -289,17 +302,38 @@ class SystemIntegrationFramework:
             # Check vector clock coordination
             if self.multi_broker_coordinator:
                 coordination_status = self.multi_broker_coordinator.get_global_status()
-                compliance_checks["vector_clock_coordination"] = (
-                    "vector_clock" in coordination_status and 
-                    len(coordination_status["broker_clusters"]) > 0
-                )
+                has_vc = "vector_clock" in coordination_status
+                # Prefer reported clusters; fall back to internal mapping if needed
+                clusters_count = len(coordination_status.get("broker_clusters", {}))
+                if clusters_count == 0 and hasattr(self.multi_broker_coordinator, "broker_clusters"):
+                    clusters_count = len(getattr(self.multi_broker_coordinator, "broker_clusters", {}))
+                compliance_checks["vector_clock_coordination"] = has_vc and clusters_count > 0
             
             # Check emergency response
+            # Prefer a directly registered emergency manager; if absent, fall back to
+            # the coordinator's embedded emergency manager (common in integrated runs).
+            emergency_status = None
             if self.emergency_manager:
-                emergency_status = self.emergency_manager.get_emergency_status()
+                try:
+                    emergency_status = self.emergency_manager.get_emergency_status()
+                except Exception:
+                    emergency_status = None
+            if emergency_status is None and self.multi_broker_coordinator and hasattr(self.multi_broker_coordinator, "emergency_manager"):
+                try:
+                    emergency_status = self.multi_broker_coordinator.emergency_manager.get_emergency_status()
+                except Exception:
+                    emergency_status = None
+
+            if emergency_status:
+                has_nodes = len(emergency_status.get("managed_nodes", [])) > 0
+                if not has_nodes and self.multi_broker_coordinator and hasattr(self.multi_broker_coordinator, "emergency_manager"):
+                    try:
+                        fallback_status = self.multi_broker_coordinator.emergency_manager.get_emergency_status()
+                        has_nodes = len(fallback_status.get("managed_nodes", [])) > 0
+                    except Exception:
+                        has_nodes = False
                 compliance_checks["emergency_response"] = (
-                    "manager_id" in emergency_status and
-                    len(emergency_status["managed_nodes"]) > 0
+                    "manager_id" in emergency_status and has_nodes
                 )
             
             # Check causal consistency
@@ -332,6 +366,10 @@ class SystemIntegrationFramework:
                 )
             
             # Determine compliance level
+            try:
+                LOG.debug(f"UCP compliance checks detail: {json.dumps(compliance_checks, sort_keys=True)}")
+            except Exception:
+                LOG.debug(f"UCP compliance checks detail: {compliance_checks}")
             passed_checks = sum(1 for check in compliance_checks.values() if check)
             total_checks = len(compliance_checks)
             
