@@ -93,25 +93,30 @@ class VectorClockBroker(ExecutorBroker):
     def __init__(self, broker_id: str = None):
         """Initialize vector clock broker"""
         super().__init__(broker_id)
-        
+
         # Vector clock coordination
         self.coordination_state = BrokerCoordinationState.INITIALIZING
         self.coordination_lock = threading.RLock()
-        
+
         # Distributed coordination
         self.peer_brokers = {}
         self.distributed_jobs = {}
         self.global_fcfs_counter = 0
-        
+
         # Cross-broker synchronization
         self.broker_vector_clocks = {}
         self.sync_interval = 3.0  # Sync every 3 seconds
         self.sync_thread = None
-        
+
+        # Datastore metadata mappings used during metadata sync
+        # Ensure this is always initialized to avoid attribute errors
+        # Key: data_key -> Value: list of datastore_ids
+        self.datastore_mappings = {}
+
         # FCFS policy for distributed coordination
         self.fcfs_policy = FCFSConsistencyPolicy()
         self.job_ordering_lock = threading.RLock()
-        
+
         self.coordination_state = BrokerCoordinationState.ACTIVE
         LOG.info(f"VectorClockBroker {self.broker_id} initialized with distributed coordination")
     
@@ -477,9 +482,9 @@ class VectorClockBroker(ExecutorBroker):
 
     def _get_datastore_mappings(self):
         """Get datastore location mappings for metadata sync"""
-        # Return empty dict if no datastores registered
-        # This can be extended when datastore integration is needed
-        return {}
+        # Return a shallow copy to avoid aliasing snapshot with live state
+        # Empty dict if no datastores registered yet
+        return dict(self.datastore_mappings)
 
     def get_metadata_snapshot(self):
         """Create a complete metadata snapshot for synchronization"""
